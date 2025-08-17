@@ -4,8 +4,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import ReactMarkdown from 'react-markdown'
+import { CartManager } from '@/lib/cart-utils'
 import {
-  ChevronLeft, ChevronRight, Star, Truck, ShieldCheck, Tag, Share2, Heart, Copy, X, Maximize2
+  ChevronLeft, ChevronRight, Star, Truck, ShieldCheck, Tag, Share2, Heart, X, Maximize2
 } from 'lucide-react'
 
 // -------------------------------
@@ -28,12 +29,31 @@ type Product = {
   deliveryInfo?: string
   promotions?: string[]
   category?: string
+  stock?: number
 }
 
 // -------------------------------
 // Helpers
 // -------------------------------
 const formatTHB = (n: number) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(n)
+const ensureString = (v: unknown) => (v == null ? '' : String(v))
+
+// กันเคส backend อื่น ๆ ที่ยังไม่ normalize (เผื่อไว้)
+function normalizeOptionsUI(raw: any): ProductOption[] {
+  if (Array.isArray(raw) && raw.every((o) => typeof o === 'object' && Array.isArray(o?.values))) {
+    return (raw as any[]).map((o) => ({ name: ensureString(o.name), values: (o.values ?? []).map(ensureString) }))
+  }
+  if (Array.isArray(raw) && raw.every((v) => typeof v === 'string' || typeof v === 'number')) {
+    return [{ name: 'ตัวเลือก', values: (raw as Array<string|number>).map(ensureString) }]
+  }
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return Object.entries(raw).map(([k, vals]) => ({
+      name: ensureString(k),
+      values: Array.isArray(vals) ? (vals as any[]).map(ensureString) : []
+    }))
+  }
+  return []
+}
 
 // -------------------------------
 // Skeleton
@@ -70,7 +90,6 @@ export default function ProductDetailPage() {
   const router = useRouter()
 
   const [product, setProduct] = useState<Product | null>(null)
-  const [cart, setCart] = useState<Product[]>([])
   const [mainIndex, setMainIndex] = useState(0)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
   const [quantity, setQuantity] = useState(1)
@@ -78,65 +97,76 @@ export default function ProductDetailPage() {
   const [liked, setLiked] = useState(false)
   const [lightbox, setLightbox] = useState(false)
 
+  // Fetch product by id
+  useEffect(() => {
+    let mounted = true
+    async function fetchProduct() {
+      try {
+        setLoading(true)
+        const res = await fetch(`/api/products/${id}`)
+        if (!res.ok) throw new Error('fetch failed')
+        const data = await res.json()
+
+        const normalizedOptions = normalizeOptionsUI(data.options)
+
+        const enriched: Product = {
+          ...data,
+          options: normalizedOptions,
+          rating: data.rating ?? 4.8,
+          reviews: data.reviews ?? 123,
+          sold: data.sold ?? 456,
+          discountPercent: data.discountPercent ?? 15,
+          stock: data.stock ?? 999
+        }
+
+        if (!mounted) return
+        setProduct(enriched)
+
+        // ตั้งค่า default ของแต่ละ option เป็นค่าตัวแรก
+        if (normalizedOptions.length) {
+          const init: Record<string, string> = {}
+          normalizedOptions.forEach((o) => {
+            if (o.values?.length) init[o.name] = ensureString(o.values[0])
+          })
+          setSelectedOptions(init)
+        } else {
+          setSelectedOptions({})
+        }
+      } catch {/* no-op */} finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    fetchProduct()
+    return () => { mounted = false }
+  }, [id])
+
+  // Images
   const images = useMemo(() => {
     if (!product) return [] as string[]
     if (product.images?.length) return product.images
     return product.image ? [product.image] : []
   }, [product])
 
-  const mainImage = images[mainIndex]
+  const mainImage = images[mainIndex] || 'https://via.placeholder.com/600x600?text=No+Image'
 
-  useEffect(() => {
-    let mounted = true
-    const fetchProduct = async () => {
-      try {
-        setLoading(true)
-        const res = await fetch(`/api/products/${id}`)
-        if (!res.ok) throw new Error('fetch failed')
-        const data = await res.json()
-        if (!mounted) return
-        setProduct({
-          ...data,
-          rating: data.rating ?? 4.8,
-          reviews: data.reviews ?? 123,
-          sold: data.sold ?? 456,
-          discountPercent: data.discountPercent ?? 15,
-        })
-        if (data.options) {
-          const initial: Record<string, string> = {}
-          data.options.forEach((opt: ProductOption) => {
-            if (opt.values.length > 0) initial[opt.name] = opt.values[0]
-          })
-          setSelectedOptions(initial)
-        }
-      } catch {
-        /* noop */
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-    fetchProduct()
-    const cartData = localStorage.getItem('cart')
-    if (cartData) setCart(JSON.parse(cartData))
-    return () => { mounted = false }
-  }, [id])
-
-  const inCart = !!cart.find((p) => p._id === id)
-
-  const addToCart = () => {
-    if (product && !inCart) {
-      const newCart = [...cart, product]
-      setCart(newCart)
-      localStorage.setItem('cart', JSON.stringify(newCart))
-    }
-  }
-
+  // Price
   const discountedPrice = useMemo(() => {
     if (!product) return 0
     if (!product.discountPercent) return product.price
     return Math.round(product.price * (1 - product.discountPercent / 100))
   }, [product])
 
+  // Option gating: ถ้าไม่มีตัวเลือก -> ซื้อได้เลย
+  const requiresOptions = (product?.options?.length ?? 0) > 0
+  const selectedComplete = !requiresOptions
+    ? true
+    : product!.options!.every((opt) => !!selectedOptions[opt.name])
+
+  // Cart state — อ้างอิงตาม selectedOptions เสมอ
+  const inCart = CartManager.isInCart(product?._id || '', selectedOptions)
+  const currentQuantity = CartManager.getItemQuantity(product?._id || '', selectedOptions)
+
+  // Actions
   const nextImage = () => setMainIndex((i) => (i + 1) % Math.max(1, images.length))
   const prevImage = () => setMainIndex((i) => (i - 1 + Math.max(1, images.length)) % Math.max(1, images.length))
 
@@ -149,21 +179,32 @@ export default function ProductDetailPage() {
         await navigator.clipboard.writeText(url)
         alert('คัดลอกลิงก์แล้ว')
       }
-    } catch {/* ignore */}
+    } catch { /* ignore */ }
   }
 
-  // Add to cart and go to checkout
-  const buyNow = () => {
-    if (product) {
-      let newCart = [...cart]
-      if (!inCart) {
-        newCart = [...cart, product]
-        setCart(newCart)
-        localStorage.setItem('cart', JSON.stringify(newCart))
-      }
-      router.push('/checkout')
+  const addToCart = () => {
+    if (!product) return
+    if (requiresOptions && !selectedComplete) {
+      alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนเพิ่มเข้าตะกร้า')
+      return
     }
+    CartManager.addProduct({ ...product, selectedOptions } as any, quantity)
   }
+
+  const buyNow = () => {
+    if (!product) return
+    if (requiresOptions && !selectedComplete) {
+      alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนสั่งซื้อ')
+      return
+    }
+    CartManager.addProduct({ ...product, selectedOptions } as any, quantity)
+    router.push('/checkout')
+  }
+
+  // อย่าให้จำนวนเกิน stock
+  useEffect(() => {
+    setQuantity((q) => Math.max(1, Math.min(q, product?.stock ?? 999)))
+  }, [product?.stock])
 
   if (loading) {
     return (
@@ -187,7 +228,7 @@ export default function ProductDetailPage() {
     <div className="min-h-screen" style={{ background: '#fff' }}>
       <Header />
       <div className="max-w-5xl mx-auto p-4 md:p-8">
-        {/* Breadcrumb / Back */}
+        {/* Back & category */}
         <div className="flex items-center justify-between mb-3">
           <button
             className="inline-flex items-center gap-2 text-orange-700 hover:text-orange-900 hover:underline"
@@ -208,12 +249,11 @@ export default function ProductDetailPage() {
             <div className="relative bg-gray-50 rounded-xl border aspect-square overflow-hidden group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={mainImage || 'https://via.placeholder.com/600x600?text=No+Image'}
+                src={mainImage}
                 alt={product.name}
                 className="w-full h-full object-contain group-hover:scale-[1.015] transition-transform"
               />
 
-              {/* Controls */}
               {images.length > 1 && (
                 <>
                   <button
@@ -233,7 +273,6 @@ export default function ProductDetailPage() {
                 </>
               )}
 
-              {/* Open lightbox */}
               {mainImage && (
                 <button
                   onClick={() => setLightbox(true)}
@@ -245,7 +284,6 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {/* Thumbnails */}
             {images.length > 1 && (
               <div className="mt-3 grid grid-cols-5 gap-2">
                 {images.map((img, idx) => (
@@ -264,8 +302,8 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* Right: Product Info (sticky on desktop) */}
-          <div className="flex-1 flex flex-col gap-4 md:sticky md:top-8">
+          {/* Right: Info */}
+          <div className="flex-1 flex flex-col gap-4 md:sticky md:top-8 relative z-20">
             <div className="flex items-start justify-between gap-3">
               <h1 className="text-2xl md:text-3xl font-extrabold leading-snug text-gray-900">{product.name}</h1>
               <div className="hidden md:flex items-center gap-2 text-gray-500">
@@ -316,17 +354,6 @@ export default function ProductDetailPage() {
               ) : null}
             </div>
 
-            {/* Promo chips */}
-            {product.promotions?.length ? (
-              <div className="flex flex-wrap gap-2">
-                {product.promotions.map((p, i) => (
-                  <span key={i} className="bg-pink-100 text-pink-700 px-2 py-1 rounded-full text-xs font-semibold border border-pink-200">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
             {/* Delivery / trust */}
             <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
@@ -341,23 +368,36 @@ export default function ProductDetailPage() {
 
             {/* Options */}
             {product.options?.length ? (
-              <div className="space-y-4 pt-2">
+              <div className="space-y-4 pt-2 relative z-10">
                 {product.options.map((opt) => (
-                  <div key={opt.name}>
-                    <div className="font-semibold mb-1">{opt.name}</div>
+                  <div key={opt.name} className="pointer-events-auto">
+                    <div className="font-semibold mb-1">
+                      {opt.name}
+                      {selectedOptions[opt.name] ? (
+                        <span className="ml-2 text-sm text-gray-500">เลือก: {selectedOptions[opt.name]}</span>
+                      ) : null}
+                    </div>
+
                     <div className="flex gap-2 flex-wrap">
-                      {opt.values.map((val) => {
+                      {(opt.values || []).map((rawVal, i) => {
+                        const val = ensureString(rawVal)
                         const active = selectedOptions[opt.name] === val
+
                         return (
                           <button
-                            key={val}
+                            key={`${opt.name}-${val}-${i}`}
                             type="button"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
                             className={`px-3 h-9 rounded-full border text-sm font-medium transition ${
                               active
                                 ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
                                 : 'bg-white text-gray-700 border-orange-200 hover:bg-orange-50'
                             }`}
-                            onClick={() => setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))
+                            }}
                           >
                             {val}
                           </button>
@@ -366,6 +406,10 @@ export default function ProductDetailPage() {
                     </div>
                   </div>
                 ))}
+
+                {requiresOptions && !selectedComplete && (
+                  <p className="text-xs text-red-600">กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนทำรายการ</p>
+                )}
               </div>
             ) : null}
 
@@ -391,33 +435,38 @@ export default function ProductDetailPage() {
                 <button
                   type="button"
                   className="w-10 h-10 text-lg font-bold text-gray-600 hover:bg-orange-50 rounded-r-xl"
-                  onClick={() => setQuantity((q) => q + 1)}
+                  onClick={() => setQuantity((q) => Math.min(q + 1, product?.stock || 999))}
+                  disabled={quantity >= (product?.stock || 999)}
                 >
                   +
                 </button>
               </div>
+              <span className="text-sm text-gray-500">สต็อก: {formatTHB(product?.stock ?? 0)}</span>
             </div>
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 className={`flex-1 py-3 rounded-xl font-semibold transition text-lg shadow ${
-                  inCart ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 text-white'
+                  selectedComplete ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-gray-300 text-white cursor-not-allowed'
                 }`}
                 onClick={addToCart}
-                disabled={inCart}
+                disabled={!selectedComplete}
               >
-                {inCart ? 'อยู่ในตะกร้าแล้ว' : 'เพิ่มเข้าตะกร้า'}
+                {inCart ? `เพิ่มอีก ${quantity} ชิ้น (${currentQuantity + quantity})` : 'เพิ่มเข้าตะกร้า'}
               </button>
               <button
-                className="flex-1 py-3 rounded-xl font-semibold bg-green-600 hover:bg-green-700 text-white transition text-lg shadow"
+                className={`flex-1 py-3 rounded-xl font-semibold transition text-lg shadow ${
+                  selectedComplete ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-300 text-white cursor-not-allowed'
+                }`}
                 onClick={buyNow}
+                disabled={!selectedComplete}
               >
                 ซื้อสินค้า
               </button>
             </div>
 
-            {/* Secondary actions (mobile visible below, desktop here) */}
+            {/* Secondary actions (mobile) */}
             <div className="flex md:hidden gap-2">
               <button
                 onClick={shareOrCopy}
@@ -448,7 +497,6 @@ export default function ProductDetailPage() {
             <ReactMarkdown>{product.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</ReactMarkdown>
           </div>
 
-          {/* Extra info sections */}
           <div className="grid md:grid-cols-3 gap-4 mt-8">
             <InfoCard
               title="การจัดส่ง"
@@ -478,10 +526,10 @@ export default function ProductDetailPage() {
           </div>
           <button
             className={`flex-1 py-3 rounded-xl font-semibold text-white ${
-              inCart ? 'bg-gray-300' : 'bg-orange-600'
+              selectedComplete ? 'bg-orange-600' : 'bg-gray-300'
             }`}
             onClick={addToCart}
-            disabled={inCart}
+            disabled={!selectedComplete}
           >
             {inCart ? 'อยู่ในตะกร้าแล้ว' : 'เพิ่มเข้าตะกร้า'}
           </button>
@@ -489,47 +537,47 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Lightbox */}
-     {lightbox && (
-  <div
-    className="fixed inset-0 z-50 bg-black/90"
-    onClick={() => setLightbox(false)}   // คลิกพื้นหลังเพื่อปิด
-  >
-    <button
-      aria-label="ปิด"
-      className="absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
-      onClick={(e) => { e.stopPropagation(); setLightbox(false) }} // กันคลิกทะลุ
-    >
-      <X className="w-5 h-5" />
-    </button>
-
-    <div
-      className="absolute inset-0 flex items-center justify-center px-4 z-40"
-      onClick={(e) => e.stopPropagation()} // ไม่ให้คลิกตรงเนื้อหาไปปิด
-    >
-      {images.length > 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); prevImage() }}
-          className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90"
+          onClick={() => setLightbox(false)}
         >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-      )}
+          <button
+            aria-label="ปิด"
+            className="absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
+            onClick={(e) => { e.stopPropagation(); setLightbox(false) }}
+          >
+            <X className="w-5 h-5" />
+          </button>
 
-      <img
-        src={mainImage}
-        alt="preview"
-        className="max-h-[80vh] max-w-[92vw] object-contain rounded-xl shadow-2xl"
-      />
+          <div
+            className="absolute inset-0 flex items-center justify-center px-4 z-40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {images.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); prevImage() }}
+                className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
 
-      {images.length > 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); nextImage() }}
-          className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      )}
-    </div>
+            <img
+              src={mainImage}
+              alt="preview"
+              className="max-h-[80vh] max-w-[92vw] object-contain rounded-xl shadow-2xl"
+            />
+
+            {images.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); nextImage() }}
+                className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-orange-900 grid place-items-center"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
 
           {/* thumbs in lightbox */}
           {images.length > 1 && (
@@ -569,4 +617,3 @@ function InfoCard({ title, text, icon }: { title: string; text: string; icon: Re
     </div>
   )
 }
-

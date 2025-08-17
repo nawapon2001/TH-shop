@@ -1,26 +1,12 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose'
 
 const BannerSchema = new mongoose.Schema({
-    image: {
-        type: Buffer,
-        required: true
-    },
-    contentType: {
-        type: String,
-        required: true
-    },
-    filename: {
-        type: String
-    },
-    url: {
-        type: String
-    },
-    isSmall: {
-        type: Boolean,
-        default: false
-    }
-}, {
-    timestamps: true
-});
+  title: { type: String, required: true },
+  image: { type: String, required: true },
+  link: String,
+  order: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+})
 
-export default mongoose.models.Banner || mongoose.model('Banner', BannerSchema);
+export default mongoose.models.Banner || mongoose.model('Banner', BannerSchema)

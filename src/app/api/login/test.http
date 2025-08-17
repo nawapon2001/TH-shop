@@ -1,0 +1,17 @@
+### Test Login API
+POST http://localhost:3000/api/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### Test with wrong credentials
+POST http://localhost:3000/api/login
+Content-Type: application/json
+
+{
+  "email": "wrong@example.com",
+  "password": "wrongpassword"
+}

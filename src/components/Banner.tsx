@@ -14,7 +14,7 @@ export default function Banner({ images = [], height, className }: BannerProps) 
   const [loaded, setLoaded] = useState<BannerItem[]>(images)
   const [current, setCurrent] = useState(0)
 
-  // โหลดจาก /api/banner อัตโนมัติถ้าไม่ส่ง images มา
+  // โหลดจาก /api/banners อัตโนมัติถ้าไม่ส่ง images มา
   useEffect(() => {
     if (images.length > 0) {
       setLoaded(images)
@@ -24,15 +24,28 @@ export default function Banner({ images = [], height, className }: BannerProps) 
     ;(async () => {
       try {
         const res = await fetch('/api/banners', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Failed to fetch banners')
         const data = await res.json()
-        // ปรับชื่อฟิลด์ให้เป็นรูปแบบเดียวกัน
+
+        // ปรับชื่อฟิลด์ให้เป็นรูปแบบเดียวกัน + แก้ isSmall ให้รองรับ '1'/'0'/'true'/'false'
         const normalized: BannerItem[] = Array.isArray(data)
-          ? data.map((b: any) => ({
-              _id: b._id,
-              url: b.image ?? b.url,
-              image: b.image ?? b.url,
-              isSmall: !!b.isSmall,
-            }))
+          ? data.map((b: any) => {
+              const src = b.image ?? b.url ?? b.src ?? b.path ?? b.imageUrl
+              const rawSmall = b.isSmall ?? b.small
+              const isSmall =
+                rawSmall === true ||
+                rawSmall === 1 ||
+                rawSmall === '1' ||
+                (typeof rawSmall === 'string' && rawSmall.toLowerCase() === 'true') ||
+                b.size === 'small'
+
+              return {
+                _id: b._id ?? b.id,
+                url: src,
+                image: src,
+                isSmall,
+              }
+            })
           : []
         if (alive) setLoaded(normalized)
       } catch {
@@ -137,10 +150,18 @@ export default function Banner({ images = [], height, className }: BannerProps) 
 
 /* utils */
 function getSrc(b: { url?: string; image?: string }) {
-  const raw = (b.url || b.image || '').trim()
+  const raw = (b.image ?? b.url ?? '').trim()
   if (!raw) return ''
-  // ถ้าเป็น base64 หรือ http หรือ /banners หรือ /uploads ให้ใช้ตรง ๆ
-  if (raw.startsWith('data:') || raw.startsWith('http') || raw.startsWith('/banners/') || raw.startsWith('/uploads/')) return raw
-  // เผื่อกรณีเซฟเป็นชื่อไฟล์เฉย ๆ
+
+  // รองรับ data:, http/https, protocol-relative, และ path ที่ขึ้นต้นด้วย '/'
+  if (/^data:/.test(raw)) return raw
+  if (/^https?:\/\//.test(raw)) return raw
+  if (raw.startsWith('//')) return raw
+  if (raw.startsWith('/')) return raw
+
+  // ถ้าเป็นพาธสัมพัทธ์ที่มีโฟลเดอร์ เช่น "images/hero.jpg" -> prefix ด้วย '/'
+  if (raw.includes('/')) return `/${raw.replace(/^\/+/, '')}`
+
+  // ถ้าเป็นชื่อไฟล์เฉย ๆ ให้ชี้ไปโฟลเดอร์ banners (อัปโหลดจากแอดมินจะเก็บไว้ที่นี่)
   return `/banners/${raw.replace(/^\/?banners\//, '')}`
 }

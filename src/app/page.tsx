@@ -1,18 +1,19 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import Header from '../components/Header'
+import Link from 'next/link'
+import Header from '@/components/Header'
 import Banner from '@/components/Banner'
 import FullScreenBanner from '@/components/FullScreenBanner'
-import ProductRecommendations from '../components/ProductRecommendations'
+import ProductRecommendations from '@/components/ProductRecommendations'
 import Swal from 'sweetalert2'
 import { motion } from 'framer-motion'
-import { ShoppingCart, Search, Filter, X, Truck, Star, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  ShoppingCart, Search, Filter, X, Truck, Star, ChevronLeft, ChevronRight,
+} from 'lucide-react'
 
-// -------------------------------
-// Types
-// -------------------------------
+/* ------------------------------- Types ------------------------------- */
 type Product = {
   _id: string
   name: string
@@ -27,17 +28,15 @@ type Product = {
 }
 type Category = { name: string; icon?: string }
 type BannerItem = { url: string; isSmall?: boolean }
+type ApiBanner = { image?: string; url?: string; isSmall?: boolean }
+type SortKey = 'popular' | 'price_asc' | 'price_desc'
 
-// -------------------------------
-// Helpers
-// -------------------------------
+/* ------------------------------- Helpers ------------------------------- */
 const formatTHB = (value: number) =>
   new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(value)
 const clamp = (n: number, min = 0, max = 5) => Math.max(min, Math.min(max, n))
 
-// -------------------------------
-// Skeletons & Empty states
-// -------------------------------
+/* ------------------------------- Skeletons ------------------------------- */
 function SkeletonCard() {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-orange-100 animate-pulse aspect-[3/4] overflow-hidden">
@@ -62,9 +61,7 @@ function EmptyMessage({ title, subtitle }: { title: string; subtitle?: string })
   )
 }
 
-// -------------------------------
-// CategoryMenu
-// -------------------------------
+/* ------------------------------- CategoryMenu ------------------------------- */
 function CategoryMenu({
   categories,
   selected,
@@ -118,6 +115,7 @@ function CategoryMenu({
               >
                 <span className="w-8 h-8 rounded-full bg-white/90 border border-orange-200 flex items-center justify-center overflow-hidden">
                   {cat.icon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={cat.icon} alt={cat.name} className="w-5 h-5 object-contain" />
                   ) : (
                     <span className="text-lg">🗂️</span>
@@ -142,9 +140,7 @@ function CategoryMenu({
   )
 }
 
-// -------------------------------
-// Product Card
-// -------------------------------
+/* ------------------------------- Product Card ------------------------------- */
 function ProductCard({
   product,
   inCart,
@@ -171,16 +167,25 @@ function ProductCard({
       onClick={onClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') onClick() }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onClick()
+      }}
     >
       {/* Image */}
       <div className="relative aspect-[4/5] bg-white">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={Array.isArray(product.images) && product.images.length ? product.images[0] : product.image || 'https://via.placeholder.com/600x600?text=No+Image'}
+          src={
+            Array.isArray(product.images) && product.images.length
+              ? product.images[0]
+              : product.image || 'https://via.placeholder.com/600x600?text=No+Image'
+          }
           alt={product.name}
           loading="lazy"
           className="absolute inset-0 w-full h-full object-cover"
-          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/600x600?text=No+Image' }}
+          onError={(e) => {
+            ;(e.target as HTMLImageElement).src = 'https://via.placeholder.com/600x600?text=No+Image'
+          }}
         />
 
         {/* Discount badge */}
@@ -204,7 +209,10 @@ function ProductCard({
           <button
             type="button"
             className="flex-1 h-10 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow hover:bg-orange-700 flex items-center justify-center gap-2"
-            onClick={(e) => { e.stopPropagation(); onAddToCart(product) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddToCart(product)
+            }}
             aria-label="เพิ่มลงตะกร้า"
           >
             <ShoppingCart className="w-4 h-4" /> เพิ่มลงตะกร้า
@@ -241,10 +249,17 @@ function ProductCard({
   )
 }
 
-// -------------------------------
-// Main Page
-// -------------------------------
-export default function ProductPage() {
+/* ------------------------------- Page (wrapper เพื่อใช้ Suspense) ------------------------------- */
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-6 text-slate-500">กำลังโหลด…</div>}>
+      <ProductPageInner />
+    </Suspense>
+  )
+}
+
+/* ------------------------------- Page (จริง) ------------------------------- */
+function ProductPageInner() {
   const [products, setProducts] = useState<Product[]>([])
   const [bannerImages, setBannerImages] = useState<BannerItem[]>([])
   const [cart, setCart] = useState<Product[]>([])
@@ -253,72 +268,97 @@ export default function ProductPage() {
   const [loadingCats, setLoadingCats] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>()
   const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState<'popular' | 'price_asc' | 'price_desc'>('popular')
+  const [sortBy, setSortBy] = useState<SortKey>('popular')
 
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const username = searchParams.get('username')
+  const params = useSearchParams() // ✅ อยู่ใน Suspense แล้ว
+  const username = params.get('username') || undefined
 
-  // Fetch products
+  /* Fetch products */
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true)
         const res = await fetch('/api/products')
-        setProducts(res.ok ? (await res.json()) ?? [] : [])
-      } catch { setProducts([]) }
-      finally { setLoading(false) }
+        setProducts(res.ok ? ((await res.json()) as Product[]) ?? [] : [])
+      } catch {
+        setProducts([])
+      } finally {
+        setLoading(false)
+      }
     }
     fetchData()
   }, [])
 
-  // Fetch banners
+  /* Fetch banners */
   useEffect(() => {
     const fetchBanners = async () => {
       try {
         const res = await fetch('/api/banners')
-        if (!res.ok) return setBannerImages([])
-        const data = await res.json()
-        const banners: BannerItem[] = Array.isArray(data)
-          ? data.map((b: any) => ({
-              url: b.image && b.image.startsWith('data:')
-                ? b.image
-                : b.image
-                  ? (b.image.startsWith('/banners/') ? b.image : `/banners/${b.image.replace(/^\/?banners\//, '')}`)
-                  : b.url && b.url.startsWith('data:')
-                    ? b.url
-                    : b.url
-                      ? (b.url.startsWith('/banners/') ? b.url : `/banners/${b.url.replace(/^\/?banners\//, '')}`)
-                      : '',
-              isSmall: b.isSmall,
-            }))
-          : []
+        if (!res.ok) {
+          setBannerImages([])
+          return
+        }
+        const data = (await res.json()) as ApiBanner[] | unknown
+        const arr = Array.isArray(data) ? data : []
+        const banners: BannerItem[] = arr.map((b) => {
+          const img = b.image || ''
+          const url = b.url || ''
+          const pick = img || url
+          const normalized =
+            pick && pick.startsWith('data:')
+              ? pick
+              : pick
+              ? pick.startsWith('/banners/')
+                ? pick
+                : `/banners/${pick.replace(/^\/?banners\//, '')}`
+              : ''
+          return { url: normalized, isSmall: b.isSmall }
+        })
         setBannerImages(banners)
-      } catch { setBannerImages([]) }
+      } catch {
+        setBannerImages([])
+      }
     }
     fetchBanners()
   }, [])
 
-  // Fetch categories
+  /* Fetch categories */
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         setLoadingCats(true)
         const res = await fetch('/api/categories')
-        setCategories(res.ok ? (await res.json()) ?? [] : [])
-      } catch { setCategories([]) }
-      finally { setLoadingCats(false) }
+        const d = res.ok ? ((await res.json()) as Category[] | string[]) ?? [] : []
+        // รองรับทั้ง array ของ object และ array ของ string
+        const cats: Category[] = Array.isArray(d)
+          ? (typeof d[0] === 'string'
+              ? (d as string[]).map((name) => ({ name }))
+              : (d as Category[])
+            )
+          : []
+        setCategories(cats)
+      } catch {
+        setCategories([])
+      } finally {
+        setLoadingCats(false)
+      }
     }
     fetchCategories()
   }, [])
 
-  // Load cart
+  /* Load & persist cart */
   useEffect(() => {
     const raw = localStorage.getItem('cart')
-    try { setCart(raw ? JSON.parse(raw) : []) } catch { setCart([]) }
+    try {
+      setCart(raw ? (JSON.parse(raw) as Product[]) : [])
+    } catch {
+      setCart([])
+    }
   }, [])
-  // Persist cart
-  useEffect(() => { localStorage.setItem('cart', JSON.stringify(cart)) }, [cart])
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(cart))
+  }, [cart])
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -331,7 +371,7 @@ export default function ProductPage() {
     })
   }
 
-  // Derived list
+  /* Derived list */
   const filtered = useMemo(() => {
     let list = [...products]
     if (selectedCategory) list = list.filter((p) => p.category === selectedCategory)
@@ -340,9 +380,19 @@ export default function ProductPage() {
       list = list.filter((p) => [p.name, p.description].filter(Boolean).some((f) => f!.toLowerCase().includes(q)))
     }
     switch (sortBy) {
-      case 'price_asc': list.sort((a, b) => a.price - b.price); break
-      case 'price_desc': list.sort((a, b) => b.price - a.price); break
-      default: list.sort((a, b) => (b.sold ?? 0) - (a.sold ?? 0) || (b.rating ?? 0) - (a.rating ?? 0) || a.price - b.price)
+      case 'price_asc':
+        list.sort((a, b) => a.price - b.price)
+        break
+      case 'price_desc':
+        list.sort((a, b) => b.price - a.price)
+        break
+      default:
+        list.sort(
+          (a, b) =>
+            (b.sold ?? 0) - (a.sold ?? 0) ||
+            (b.rating ?? 0) - (a.rating ?? 0) ||
+            a.price - b.price
+        )
     }
     return list
   }, [products, selectedCategory, search, sortBy])
@@ -359,14 +409,16 @@ export default function ProductPage() {
       <div className="sticky top-0 z-40 backdrop-blur bg-white/70 border-b border-orange-100">
         <Header user={username} />
         <div className="max-w-6xl mx-auto px-4 py-2 flex justify-end">
-          <a href="/orders" className="text-orange-700 hover:underline font-semibold">ดูคำสั่งซื้อของคุณ</a>
+          <Link href="/orders" className="text-orange-700 hover:underline font-semibold">
+            ดูคำสั่งซื้อของคุณ
+          </Link>
         </div>
       </div>
 
-      {/* Banners — ลบ “แถบเล็ก/แบนเนอร์เล็ก” โดยกรอง isSmall ออก */}
+      {/* Banners — แสดงเฉพาะที่ไม่ใช่ small */}
       <div className="relative">
         {bannerImages?.length > 0 ? (
-          <Banner images={bannerImages.filter(b => !b.isSmall)} />
+          <Banner images={bannerImages.filter((b) => !b.isSmall)} />
         ) : (
           <FullScreenBanner />
         )}
@@ -416,7 +468,7 @@ export default function ProductPage() {
                 <div className="relative">
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as any)}
+                    onChange={(e) => setSortBy(e.target.value as SortKey)}
                     className="w-full h-12 appearance-none rounded-2xl border border-orange-200 bg-white pl-3 pr-8 text-black text-sm shadow-sm hover:bg-orange-50"
                     aria-label="เรียงลำดับราคา"
                   >
@@ -427,12 +479,12 @@ export default function ProductPage() {
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-orange-700">▾</span>
                 </div>
               </div>
-              <a
+              <Link
                 href="/checkout"
                 className="inline-flex items-center gap-2 h-12 px-4 rounded-2xl bg-orange-100 text-orange-800 font-semibold shadow hover:bg-orange-200 border border-orange-200"
               >
                 <ShoppingCart className="w-5 h-5" /> ตะกร้า ({cart.length})
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -466,12 +518,18 @@ export default function ProductPage() {
         <section className="mb-8">
           <div className="flex items-end justify-between mb-4">
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-orange-900">สินค้าทั้งหมด</h1>
-            {selectedCategory && <div className="text-sm text-gray-600">หมวดหมู่: <span className="font-semibold text-orange-800">{selectedCategory}</span></div>}
+            {selectedCategory && (
+              <div className="text-sm text-gray-600">
+                หมวดหมู่: <span className="font-semibold text-orange-800">{selectedCategory}</span>
+              </div>
+            )}
           </div>
 
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
-              {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
             </div>
           ) : filtered.length === 0 ? (
             <EmptyMessage title="ไม่พบสินค้า" subtitle="ลองค้นหาด้วยคำอื่น หรือเปลี่ยนตัวกรองดูนะ" />
@@ -497,13 +555,13 @@ export default function ProductPage() {
       </main>
 
       {/* Floating Cart CTA (mobile) */}
-      <a
+      <Link
         href="/checkout"
         className="fixed md:hidden bottom-4 right-4 inline-flex items-center gap-2 px-4 h-12 rounded-full bg-orange-600 text-white font-semibold shadow-lg"
         aria-label="ไปที่ตะกร้าสินค้า"
       >
         <ShoppingCart className="w-5 h-5" /> {cart.length}
-      </a>
+      </Link>
     </div>
   )
-} 
+}

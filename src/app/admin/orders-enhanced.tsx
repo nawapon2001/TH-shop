@@ -182,8 +182,15 @@ export default function AdminOrdersPage() {
               <ul className="bg-orange-50 rounded p-3">
                 {order.items.map((item: any, i: number) => (
                   <li key={i} className="flex justify-between py-1">
-                    <span>{item.name}</span>
-                    <span>{item.price.toLocaleString()} บาท</span>
+                    <span>
+                      {item.name} 
+                      <span className="text-gray-500 text-sm ml-2">
+                        (x{item.qty || 1})
+                      </span>
+                    </span>
+                    <span>
+                      {((item.price || 0) * (item.qty || 1)).toLocaleString()} บาท
+                    </span>
                   </li>
                 ))}
               </ul>

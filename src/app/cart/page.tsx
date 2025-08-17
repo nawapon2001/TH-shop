@@ -143,14 +143,14 @@ export default function CartPage() {
                   </p>
                 )}
 
-                <button
-                  className="mt-4 w-full h-12 rounded-full bg-gradient-to-r from-orange-600 to-amber-500 text-white font-semibold shadow hover:from-orange-700 hover:to-amber-600 transition"
-                  onClick={() => alert('เดโม: ดำเนินการสั่งซื้อ')}
+                <a
+                  href="/checkout"
+                  className="mt-4 w-full h-12 rounded-full bg-gradient-to-r from-orange-600 to-amber-500 text-white font-semibold shadow hover:from-orange-700 hover:to-amber-600 transition flex items-center justify-center"
                 >
                   <span className="inline-flex items-center gap-2">
                     <CreditCard className="w-5 h-5" /> ดำเนินการสั่งซื้อ
                   </span>
-                </button>
+                </a>
 
                 <a
                   href="/"

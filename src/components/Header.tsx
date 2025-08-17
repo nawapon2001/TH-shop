@@ -12,6 +12,12 @@ import {
   Menu,
   X,
   Search,
+  Bell,
+  HelpCircle,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  Heart,
 } from 'lucide-react'
 
 export type UserProfile = {
@@ -21,13 +27,24 @@ export type UserProfile = {
   paymentType: 'deposit' | 'full'
 }
 
+// Shopee-like Sticky Header with Search + Category Bar + Compact Topbar
 export default function Header({ user }: { user?: string | null }) {
   const [currentUser, setCurrentUser] = React.useState<string | null>(user ?? null)
   const [profile, setProfile] = React.useState<UserProfile | null>(null)
   const [cartCount, setCartCount] = React.useState(0)
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [profileOpen, setProfileOpen] = React.useState(false)
+  const [menuOpen, setMenuOpen] = React.useState(false)
+  const [cartOpen, setCartOpen] = React.useState(false)
+  const [searchOpen, setSearchOpen] = React.useState(false)
+  const [q, setQ] = React.useState('')
 
+  const categoryRef = React.useRef<HTMLDivElement | null>(null)
+  const profileRef = React.useRef<HTMLDivElement | null>(null)
+  const cartRef = React.useRef<HTMLDivElement | null>(null)
+  const searchRef = React.useRef<HTMLDivElement | null>(null)
+
+  // ---- Load user + profile from localStorage ----
   React.useEffect(() => {
     if (user) {
       setCurrentUser(user)
@@ -43,6 +60,7 @@ export default function Header({ user }: { user?: string | null }) {
     }
   }, [user])
 
+  // ---- Cart counter + listen to changes ----
   React.useEffect(() => {
     const readCart = () => {
       try {
@@ -62,6 +80,19 @@ export default function Header({ user }: { user?: string | null }) {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
+  // ---- Click outside to close popovers ----
+  React.useEffect(() => {
+    function onClick(e: MouseEvent) {
+      const t = e.target as Node
+      if (profileRef.current && !profileRef.current.contains(t)) setProfileOpen(false)
+      if (categoryRef.current && !categoryRef.current.contains(t)) setMenuOpen(false)
+      if (cartRef.current && !cartRef.current.contains(t)) setCartOpen(false)
+      if (searchRef.current && !searchRef.current.contains(t)) setSearchOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
   const signOut = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('user')
@@ -74,86 +105,215 @@ export default function Header({ user }: { user?: string | null }) {
   const initials = React.useMemo(() => {
     if (!currentUser) return 'U'
     const name = profile?.name || currentUser
-    return name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()
+    return name
+      .split(' ')
+      .map((p) => p[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
   }, [currentUser, profile])
+
+  const hotKeywords = [
+    'iPhone 16',
+    'เคสโทรศัพท์',
+    'หูฟังไร้สาย',
+    'กระเป๋าแฟชั่น',
+    'คีย์บอร์ดเกมมิ่ง',
+  ]
+
+  const categories = [
+    { name: 'มือถือ & แท็บเล็ต', href: '/c/mobile' },
+    { name: 'คอมพิวเตอร์ & เกมมิ่ง', href: '/c/computer' },
+    { name: 'แฟชั่นผู้หญิง', href: '/c/women' },
+    { name: 'แฟชั่นผู้ชาย', href: '/c/men' },
+    { name: 'ความงาม & สุขภาพ', href: '/c/beauty' },
+    { name: 'บ้าน & ไลฟ์สไตล์', href: '/c/home' },
+    { name: 'ซูเปอร์มาร์เก็ต', href: '/c/supermarket' },
+    { name: 'อิเล็กทรอนิกส์', href: '/c/electronics' },
+    { name: 'กีฬา & กลางแจ้ง', href: '/c/sport' },
+  ]
+
+  const cartItems = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem('cart')
+      const arr = JSON.parse(raw ?? '[]')
+      if (!Array.isArray(arr)) return [] as any[]
+      // Normalize basic fields
+      return arr.slice(0, 5).map((it: any, idx: number) => ({
+        id: it.id ?? idx,
+        name: it.name ?? 'สินค้า',
+        price: it.price ?? 0,
+        qty: it.qty ?? 1,
+        image: it.image ?? 'https://picsum.photos/seed/cart/80/80',
+      }))
+    } catch {
+      return [] as any[]
+    }
+  }, [cartOpen, cartCount])
 
   return (
     <header className="sticky top-0 z-50">
-      {/* Accent bar (คงไว้ได้) */}
-      <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-pink-400" />
+      {/* Top micro-bar */}
+      <div className="bg-[#f05d40] text-white/90 text-xs">
+        <div className="max-w-6xl mx-auto px-3 md:px-4 flex items-center justify-between h-9">
+          <div className="flex items-center gap-3">
+            <Link href="/seller" className="hover:text-white/100">ศูนย์ผู้ขาย</Link>
+            <span className="opacity-60">|</span>
+            <Link href="/admin" className="hover:text-white/100" onClick={e => { e.preventDefault(); window.location.href = '/admin'; }}>ผู้ดูแลระบบ</Link>
+            <span className="hidden sm:inline opacity-60">|</span>
+            <Link href="/follow" className="hidden sm:inline hover:text-white/100">ติดตามเรา</Link>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/notifications" className="inline-flex items-center gap-1 hover:text-white/100">
+              <Bell className="w-3.5 h-3.5" /> การแจ้งเตือน
+            </Link>
+            <Link href="/help" className="inline-flex items-center gap-1 hover:text-white/100">
+              <HelpCircle className="w-3.5 h-3.5" /> ช่วยเหลือ
+            </Link>
+          </div>
+        </div>
+      </div>
 
-      {/* Main bar — เปลี่ยนพื้นหลังเป็นสีส้ม */}
-      <div className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-400 text-white shadow">
+      {/* Main bar */}
+      <div className="bg-gradient-to-r from-[#ee4d2d] via-[#f05d40] to-[#ff8a4c] text-white shadow">
         <div className="max-w-6xl mx-auto px-3 md:px-4">
-          <div className="h-16 flex items-center justify-between gap-3">
-            {/* Left: Brand */}
-            <div className="flex items-center gap-2">
-              <Link href="/" className="flex items-center gap-2">
-                <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 text-white font-black shadow-sm">
-                  P
-                </span>
-                <span className="text-xl font-extrabold tracking-tight text-white hidden sm:block">
-                  PAYMUNGTAK
-                </span>
-              </Link>
+          <div className="h-20 md:h-24 flex items-center gap-3">
+            {/* Brand */}
+            <Link href="/" className="flex items-center gap-2 shrink-0">
+              <span className="grid place-items-center w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/20 text-white font-black shadow-sm">
+                T
+              </span>
+              <span className="text-2xl font-extrabold tracking-tight hidden sm:block">TH-THAI</span>
+            </Link>
+
+            {/* Search */}
+            <div ref={searchRef} className="flex-1">
+              <div className="relative">
+                <div className="flex items-stretch bg-white rounded-full overflow-hidden shadow-sm ring-1 ring-black/5">
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    onFocus={() => setSearchOpen(true)}
+                    placeholder="ค้นหาสินค้า แบรนด์ และร้านค้า"
+                    className="flex-1 h-11 md:h-12 px-4 text-sm md:text-base text-neutral-800 placeholder:text-neutral-400 outline-none"
+                  />
+                  <Link
+                    href={q ? `/search?q=${encodeURIComponent(q)}` : '#'}
+                    className="grid place-items-center w-12 md:w-14 rounded-l-none bg-[#fb5533] hover:brightness-95 active:brightness-90"
+                    aria-label="ค้นหา"
+                  >
+                    <Search className="w-5 h-5" />
+                  </Link>
+                </div>
+
+                {/* Hot keywords */}
+                <div className="hidden md:flex gap-2 mt-2 pl-1">
+                  {hotKeywords.map((k) => (
+                    <Link
+                      key={k}
+                      href={`/search?q=${encodeURIComponent(k)}`}
+                      className="text-[11px] px-2 py-1 rounded-full bg-white/15 hover:bg-white/25"
+                    >
+                      {k}
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Suggestion dropdown */}
+                {searchOpen && (
+                  <div className="absolute left-0 right-0 mt-2 bg-white text-neutral-800 rounded-2xl shadow-xl ring-1 ring-black/5 overflow-hidden">
+                    <div className="px-3 py-2 text-xs text-neutral-500">คำแนะนำการค้นหา</div>
+                    <ul className="max-h-64 overflow-auto">
+                      {[q, ...hotKeywords].filter(Boolean).slice(0, 6).map((s, idx) => (
+                        <li key={idx}>
+                          <Link
+                            href={`/search?q=${encodeURIComponent(s!)}`}
+                            className="flex items-center gap-2 px-4 py-2 hover:bg-neutral-50"
+                            onClick={() => setSearchOpen(false)}
+                          >
+                            <Search className="w-4 h-4 text-neutral-400" />
+                            <span className="truncate">{s}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Center: Nav (desktop) */}
-            <nav className="hidden md:flex items-center gap-2">
-              <HeaderLink href="/" icon={<Home className="w-4 h-4" />}>หน้าแรก</HeaderLink>
-              <HeaderLink href="/cart" icon={<ShoppingCart className="w-4 h-4" />} badge={cartCount}>
-                ตะกร้า
-              </HeaderLink>
-              {currentUser && (
-                <HeaderLink href="/profile" icon={<User className="w-4 h-4" />}>โปรไฟล์</HeaderLink>
-              )}
-            </nav>
+            {/* Right: Cart + User */}
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Cart */}
+              <div ref={cartRef} className="relative">
+                <button
+                  onClick={() => setCartOpen((s) => !s)}
+                  className="relative grid place-items-center w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/20 hover:bg-white/15"
+                  aria-label="ตะกร้า"
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] grid place-items-center text-[10px] rounded-full bg-white text-[#ee4d2d] font-bold px-1">
+                      {cartCount}
+                    </span>
+                  )}
+                </button>
+                {cartOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white text-neutral-800 rounded-2xl shadow-xl ring-1 ring-black/5 overflow-hidden">
+                    <div className="px-4 py-2 font-semibold text-sm border-b">สินค้าในตะกร้า</div>
+                    {cartItems.length === 0 ? (
+                      <div className="p-4 text-sm text-neutral-500">ตะกราว่าง</div>
+                    ) : (
+                      <ul className="divide-y">
+                        {cartItems.map((it) => (
+                          <li key={it.id} className="flex items-center gap-3 p-3">
+                            <img src={it.image} alt="item" className="w-12 h-12 rounded-lg object-cover" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium truncate">{it.name}</div>
+                              <div className="text-xs text-neutral-500">x{it.qty}</div>
+                            </div>
+                            <div className="text-sm font-semibold">฿{Number(it.price).toLocaleString()}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="p-3">
+                      <Link href="/cart" className="block text-center w-full rounded-xl bg-[#fb5533] hover:brightness-95 text-white py-2 font-semibold">
+                        ไปตะกร้า
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            {/* Right: Actions */}
-            <div className="flex items-center gap-2">
-              {/* Search (chip สีขาว ตัดกับพื้นหลังส้ม) */}
-              <button
-                className="hidden sm:inline-flex items-center justify-center w-10 h-10 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-orange-800"
-                aria-label="ค้นหา"
-                title="ค้นหา"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-
-              {/* Auth area */}
+              {/* Profile */}
               {currentUser ? (
-                <div className="relative">
+                <div ref={profileRef} className="relative">
                   <button
                     onClick={() => setProfileOpen((s) => !s)}
-                    className="inline-flex items-center gap-2 pl-2 pr-3 h-10 rounded-full bg-white border border-orange-200 shadow-sm hover:bg-orange-50"
+                    className="inline-flex items-center gap-2 pl-2 pr-3 h-11 rounded-2xl bg-white/10 ring-1 ring-white/20 hover:bg-white/15"
                     aria-haspopup="menu"
                     aria-expanded={profileOpen}
                     title="บัญชีผู้ใช้"
                   >
-                    <span className="w-7 h-7 rounded-full bg-orange-600 text-white grid place-items-center text-xs font-bold">
+                    <span className="w-8 h-8 rounded-full bg-white text-[#ee4d2d] grid place-items-center text-xs font-extrabold">
                       {initials}
                     </span>
-                    <span className="hidden sm:inline text-orange-900 max-w-[120px] truncate">
-                      {profile?.name || currentUser}
-                    </span>
+                    <span className="hidden sm:inline max-w-[140px] truncate font-medium">{profile?.name || currentUser}</span>
+                    <ChevronDown className="w-4 h-4 hidden md:inline" />
                   </button>
-
                   {profileOpen && (
-                    <div
-                      className="absolute right-0 mt-2 w-56 bg-white border border-orange-200 rounded-2xl shadow-lg p-2 z-50"
-                      role="menu"
-                    >
-                      <Link
-                        href="/profile"
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-orange-50 text-orange-900"
-                        onClick={() => setProfileOpen(false)}
-                      >
+                    <div className="absolute right-0 mt-2 w-64 bg-white text-neutral-800 rounded-2xl shadow-xl ring-1 ring-black/5 p-2 z-50" role="menu">
+                      <Link href="/profile" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-neutral-50" onClick={() => setProfileOpen(false)}>
                         <User className="w-4 h-4" /> ดูโปรไฟล์
                       </Link>
-                      <button
-                        onClick={signOut}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-orange-50 text-red-600"
-                      >
+                      <Link href="/orders" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-neutral-50" onClick={() => setProfileOpen(false)}>
+                        <Package className="w-4 h-4" /> คำสั่งซื้อของฉัน
+                      </Link>
+                      <Link href="/wishlist" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-neutral-50" onClick={() => setProfileOpen(false)}>
+                        <Heart className="w-4 h-4" /> สินค้าที่ถูกใจ
+                      </Link>
+                      <button onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-neutral-50 text-red-600">
                         <LogOut className="w-4 h-4" /> ออกจากระบบ
                       </button>
                     </div>
@@ -161,14 +321,18 @@ export default function Header({ user }: { user?: string | null }) {
                 </div>
               ) : (
                 <div className="hidden md:flex items-center gap-2">
-                  <HeaderButton href="/login" icon={<LogIn className="w-4 h-4" />}>เข้าสู่ระบบ</HeaderButton>
-                  <HeaderButton href="/register" icon={<UserPlus className="w-4 h-4" />}>สมัคร</HeaderButton>
+                  <Link href="/login" className="inline-flex items-center gap-2 px-3 h-11 rounded-2xl bg-white/10 ring-1 ring-white/20 hover:bg-white/15 font-medium">
+                    <LogIn className="w-4 h-4" /> เข้าสู่ระบบ
+                  </Link>
+                  <Link href="/register" className="inline-flex items-center gap-2 px-3 h-11 rounded-2xl bg-white text-[#ee4d2d] hover:brightness-95 font-semibold">
+                    <UserPlus className="w-4 h-4" /> สมัคร
+                  </Link>
                 </div>
               )}
 
               {/* Mobile menu toggle */}
               <button
-                className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-orange-800"
+                className="md:hidden grid place-items-center w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/20 hover:bg-white/15"
                 aria-label="เมนู"
                 onClick={() => setMobileOpen((s) => !s)}
               >
@@ -177,32 +341,91 @@ export default function Header({ user }: { user?: string | null }) {
             </div>
           </div>
         </div>
+
+        {/* Category bar */}
+        <div className="hidden md:block bg-white/10">
+          <div className="max-w-6xl mx-auto px-3 md:px-4">
+            <div className="flex items-center gap-2 h-12">
+              <div ref={categoryRef} className="relative">
+                <button
+                  onClick={() => setMenuOpen((s) => !s)}
+                  className="inline-flex items-center gap-2 px-3 h-9 rounded-full bg-white/15 hover:bg-white/25 ring-1 ring-white/20"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                >
+                  <Menu className="w-4 h-4" /> หมวดหมู่
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 mt-2 grid grid-cols-2 gap-2 min-w-[520px] bg-white text-neutral-800 rounded-2xl shadow-xl ring-1 ring-black/5 p-2 z-50">
+                    {categories.map((c) => (
+                      <Link key={c.name} href={c.href} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-neutral-50">
+                        <span>{c.name}</span>
+                        <ChevronRight className="w-4 h-4 text-neutral-400" />
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <nav className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                {['ดีลพิเศษ', 'โค้ดส่วนลด', 'คูปองร้านค้า', 'ช้อปแบรนด์', 'ฟรีค่าจัดส่ง'].map((t) => (
+                  <Link key={t} href={`/tag/${encodeURIComponent(t)}`} className="px-3 h-9 rounded-full bg-white/0 hover:bg-white/15 grid place-items-center text-sm">
+                    {t}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Mobile sheet (ให้พื้นหลังขาวเพื่อความอ่านง่าย) */}
+      {/* Mobile sheet */}
       {mobileOpen && (
-        <div className="md:hidden border-b border-orange-100 bg-white/95 backdrop-blur">
-          <div className="max-w-6xl mx-auto px-3 py-3 grid gap-2">
-            <HeaderLinkMobile href="/" icon={<Home className="w-4 h-4" />}>หน้าแรก</HeaderLinkMobile>
-            <HeaderLinkMobile href="/cart" icon={<ShoppingCart className="w-4 h-4" />} badge={cartCount}>
-              ตะกร้า
-            </HeaderLinkMobile>
-            {currentUser ? (
-              <>
-                <HeaderLinkMobile href="/profile" icon={<User className="w-4 h-4" />}>โปรไฟล์</HeaderLinkMobile>
-                <button
-                  onClick={signOut}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-red-600"
-                >
-                  <LogOut className="w-4 h-4" /> ออกจากระบบ
-                </button>
-              </>
-            ) : (
-              <>
-                <HeaderLinkMobile href="/login" icon={<LogIn className="w-4 h-4" />}>เข้าสู่ระบบ</HeaderLinkMobile>
-                <HeaderLinkMobile href="/register" icon={<UserPlus className="w-4 h-4" />}>สมัคร</HeaderLinkMobile>
-              </>
-            )}
+        <div className="md:hidden border-b border-orange-100 bg-white">
+          <div className="px-3 py-3 grid gap-2">
+            {/* Mobile search */}
+            <div className="flex items-stretch bg-neutral-100 rounded-xl overflow-hidden ring-1 ring-black/5">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="ค้นหาในร้าน"
+                className="flex-1 h-11 px-3 text-sm outline-none bg-transparent"
+              />
+              <Link href={q ? `/search?q=${encodeURIComponent(q)}` : '#'} className="grid place-items-center w-12">
+                <Search className="w-5 h-5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <HeaderLinkMobile href="/" icon={<Home className="w-4 h-4" />}>หน้าแรก</HeaderLinkMobile>
+              <HeaderLinkMobile href="/cart" icon={<ShoppingCart className="w-4 h-4" />} badge={cartCount}>ตะกร้า</HeaderLinkMobile>
+              {currentUser ? (
+                <>
+                  <HeaderLinkMobile href="/profile" icon={<User className="w-4 h-4" />}>โปรไฟล์</HeaderLinkMobile>
+                  <HeaderLinkMobile href="/orders" icon={<Package className="w-4 h-4" />}>คำสั่งซื้อ</HeaderLinkMobile>
+                  <button onClick={signOut} className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-red-600">
+                    <LogOut className="w-4 h-4" /> ออกจากระบบ
+                  </button>
+                </>
+              ) : (
+                <>
+                  <HeaderLinkMobile href="/login" icon={<LogIn className="w-4 h-4" />}>เข้าสู่ระบบ</HeaderLinkMobile>
+                  <HeaderLinkMobile href="/register" icon={<UserPlus className="w-4 h-4" />}>สมัคร</HeaderLinkMobile>
+                </>
+              )}
+            </div>
+
+            <div className="pt-1">
+              <div className="text-xs text-neutral-500 mb-2">คำค้นหายอดนิยม</div>
+              <div className="flex flex-wrap gap-2">
+                {hotKeywords.map((k) => (
+                  <Link key={k} href={`/search?q=${encodeURIComponent(k)}`} className="px-2 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-sm">
+                    {k}
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -211,45 +434,13 @@ export default function Header({ user }: { user?: string | null }) {
 }
 
 /* ----------------------------- Subcomponents ----------------------------- */
-function HeaderLink({ href, icon, children, badge }: { href: string; icon: React.ReactNode; children: React.ReactNode; badge?: number }) {
-  return (
-    <Link
-      href={href}
-      className="relative inline-flex items-center gap-2 px-3 h-10 rounded-full bg-white text-orange-800 font-medium border border-orange-200 shadow-sm hover:bg-orange-50"
-    >
-      {icon}
-      <span className="hidden sm:inline">{children}</span>
-      {typeof badge === 'number' && badge > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] grid place-items-center text-[11px] rounded-full bg-orange-600 text-white px-1">
-          {badge}
-        </span>
-      )}
-    </Link>
-  )
-}
-
-function HeaderButton({ href, icon, children }: { href: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-2 px-3 h-10 rounded-full bg-white text-orange-800 font-semibold border border-orange-200 shadow-sm hover:bg-orange-50"
-    >
-      {icon}
-      <span className="hidden sm:inline">{children}</span>
-    </Link>
-  )
-}
-
 function HeaderLinkMobile({ href, icon, children, badge }: { href: string; icon: React.ReactNode; children: React.ReactNode; badge?: number }) {
   return (
-    <Link
-      href={href}
-      className="relative flex items-center gap-2 px-3 py-2 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-orange-900"
-    >
+    <Link href={href} className="relative flex items-center gap-2 px-3 py-2 rounded-xl border border-orange-200 bg-white hover:bg-orange-50 text-orange-900">
       {icon}
       <span>{children}</span>
       {typeof badge === 'number' && badge > 0 && (
-        <span className="ml-auto min-w-[18px] h-[18px] grid place-items-center text-[11px] rounded-full bg-orange-600 text-white px-1">
+        <span className="ml-auto min-w-[18px] h-[18px] grid place-items-center text-[11px] rounded-full bg-[#ee4d2d] text-white px-1">
           {badge}
         </span>
       )}
