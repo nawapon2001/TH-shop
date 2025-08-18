@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Swal from 'sweetalert2'
 import {
   PackagePlus, LogIn, UserPlus, Mail, Phone, Store, Calendar,
@@ -11,6 +12,7 @@ import {
 import { termsText } from '@/constants/termsText'
 
 export default function SellerAuthPage() {
+  const router = useRouter()
   const [sellerUser, setSellerUser] = useState('')
   const [sellerPass, setSellerPass] = useState('')
   const [confirmPass, setConfirmPass] = useState('')
@@ -48,10 +50,13 @@ export default function SellerAuthPage() {
         const err = await res.json().catch(() => ({}))
         setAuthError(err?.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
       } else {
+        const data = await res.json().catch(() => ({}))
+        // store username and optional token
         localStorage.setItem('sellerUser', sellerUser.trim())
+        if (data?.token) localStorage.setItem('sellerToken', data.token)
         setSellerUser(''); setSellerPass('')
         Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ', timer: 1200, showConfirmButton: false })
-        window.location.href = '/seller'
+        router.push('/seller/manage')
       }
     } catch {
       setAuthError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
@@ -117,15 +122,17 @@ export default function SellerAuthPage() {
         return
       }
 
+      const data = await res.json().catch(() => ({}))
+      // store username and optional token
       localStorage.setItem('sellerUser', payload.username)
+      if (data?.token) localStorage.setItem('sellerToken', data.token)
       // reset
       setSellerUser(''); setSellerPass(''); setConfirmPass('')
       setFullName(''); setEmail(''); setPhone(''); setShopName('')
       setBirthDate(''); setProvince(''); setAddress(''); setAcceptTerms(false)
       setShowMore(false); setStep(1)
-
       Swal.fire({ icon: 'success', title: 'สมัครสำเร็จ', timer: 1200, showConfirmButton: false })
-      window.location.href = '/seller'
+      router.push('/seller/manage')
     } catch (error) {
       setAuthError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
       console.error('Register error:', error)

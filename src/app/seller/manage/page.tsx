@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import Swal from 'sweetalert2'
 import { Store, User, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type SellerInfo = {
   username: string
@@ -16,11 +17,26 @@ type SellerInfo = {
 }
 
 export default function SellerManagePage() {
+  const router = useRouter()
   const [sellerUser, setSellerUser] = useState<string | null>(null)
   const [sellerInfo, setSellerInfo] = useState<SellerInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<SellerInfo | null>(null)
+
+  // Products management
+  const [products, setProducts] = useState<any[]>([])
+  const fetchSellerProducts = async (username?: string) => {
+    if (!username) return
+    try {
+      const res = await fetch(`/api/seller-products?username=${encodeURIComponent(username)}`)
+      if (!res.ok) throw new Error('fetch failed')
+      const d = await res.json().catch(()=>[])
+      setProducts(Array.isArray(d)?d:[])
+    } catch {
+      setProducts([])
+    }
+  }
 
   useEffect(() => {
     // ดึง username จาก localStorage
@@ -35,10 +51,26 @@ export default function SellerManagePage() {
       .then(data => {
         setSellerInfo(data)
         setForm(data)
+        // load products for this seller
+        fetchSellerProducts(user)
       })
       .catch(() => Swal.fire({ icon: 'error', title: 'โหลดข้อมูลไม่สำเร็จ' }))
       .finally(() => setLoading(false))
   }, [])
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!sellerUser) return
+    const ok = await Swal.fire({ icon:'warning', title:'ยืนยันการลบสินค้า?', showCancelButton:true, confirmButtonText:'ลบ' })
+    if (!ok.isConfirmed) return
+    try {
+      const res = await fetch(`/api/seller-products?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      await fetchSellerProducts(sellerUser)
+      Swal.fire({ icon:'success', title:'ลบแล้ว', timer:900, showConfirmButton:false })
+    } catch {
+      Swal.fire({ icon:'error', title:'ลบไม่สำเร็จ' })
+    }
+  }
 
   const handleEdit = () => setEditMode(true)
   const handleCancel = () => {
@@ -120,10 +152,17 @@ export default function SellerManagePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 py-10">
       <div className="max-w-xl mx-auto bg-white rounded-2xl border border-orange-200 shadow-xl p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <Store className="w-8 h-8 text-orange-600" />
-          <h1 className="text-2xl font-bold text-orange-700">จัดการร้านค้าของคุณ</h1>
+        <div className="flex items-center gap-3 mb-6 justify-between">
+          <div className="flex items-center gap-3">
+            <Store className="w-8 h-8 text-orange-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-orange-700">จัดการร้านค้าของคุณ</h1>
+              <div className="text-sm text-slate-500">ล็อกอินเป็น: <span className="font-medium text-orange-700">{sellerUser}</span></div>
+            </div>
+          </div>
+          <button onClick={() => router.push('/seller/products/create')} className="px-3 py-2 rounded-full bg-green-600 text-white text-sm">+ เพิ่มสินค้า</button>
         </div>
+
         {editMode ? (
           <form onSubmit={handleSave} className="space-y-4">
             <div>
@@ -175,17 +214,101 @@ export default function SellerManagePage() {
             <div>วันเกิด: <span className="font-semibold">{sellerInfo.birthDate}</span></div>
             <div>จังหวัด: <span className="font-semibold">{sellerInfo.province}</span></div>
             <div>ที่อยู่: <span className="font-semibold">{sellerInfo.address}</span></div>
-            <div className="flex gap-2 mt-6">
-              <button className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2" onClick={handleEdit}>
-                <Edit className="w-4 h-4" /> แก้ไขข้อมูล
+
+            {/* Products list */}
+            <div className="mt-6">
+              <h2 className="font-semibold text-orange-800 mb-2">สินค้าของฉัน</h2>
+              {products.length === 0 ? (
+                <div className="text-sm text-slate-500">ยังไม่มีสินค้า</div>
+              ) : (
+                <div className="space-y-3">
+                  {products.map(p => (
+                    <div key={p._id} className="flex items-center justify-between gap-3 p-3 border rounded">
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-xs text-slate-500">฿{Number(p.price).toLocaleString()}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={`/seller/products/edit?id=${encodeURIComponent(p._id)}`} className="px-3 py-1 rounded bg-white border text-sm">แก้ไข</a>
+                        <button onClick={()=>handleDeleteProduct(p._id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm">ลบ</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+             <div className="flex gap-2 mt-6">
+               <button className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2" onClick={handleEdit}>
+                 <Edit className="w-4 h-4" /> แก้ไขข้อมูล
+               </button>
+               <button className="px-6 py-2 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 flex items-center gap-2" onClick={handleDelete}>
+                 <Trash2 className="w-4 h-4" /> ลบร้านค้า
+               </button>
+             </div>
+           </div>
+         )}
+       </div>
+     </div>
+   )
+ }
+              <label className="block text-sm font-medium text-slate-700 mb-1">ที่อยู่</label>
+              <textarea name="address" value={form?.address || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" rows={2} required />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button type="submit" className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2">
+                <Edit className="w-4 h-4" /> บันทึก
               </button>
-              <button className="px-6 py-2 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 flex items-center gap-2" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4" /> ลบร้านค้า
+              <button type="button" className="px-6 py-2 rounded-full bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300" onClick={handleCancel}>
+                ยกเลิก
               </button>
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+          </form>: (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <User className="w-5 h-5 text-orange-500" />
+              <span className="font-semibold">{sellerInfo.fullName}</span>
+            </div>
+            <div>ชื่อร้านค้า: <span className="font-semibold">{sellerInfo.shopName}</span></div>
+            <div>อีเมล: <span className="font-semibold">{sellerInfo.email}</span></div>
+            <div>เบอร์โทร: <span className="font-semibold">{sellerInfo.phone}</span></div>
+            <div>วันเกิด: <span className="font-semibold">{sellerInfo.birthDate}</span></div>
+            <div>จังหวัด: <span className="font-semibold">{sellerInfo.province}</span></div>
+            <div>ที่อยู่: <span className="font-semibold">{sellerInfo.address}</span></div>
+
+            {/* Products list */}
+            <div className="mt-6">
+              <h2 className="font-semibold text-orange-800 mb-2">สินค้าของฉัน</h2>
+              {products.length === 0 ? (
+                <div className="text-sm text-slate-500">ยังไม่มีสินค้า</div>
+              ) : (
+                <div className="space-y-3">
+                  {products.map(p => (
+                    <div key={p._id} className="flex items-center justify-between gap-3 p-3 border rounded">
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-xs text-slate-500">฿{Number(p.price).toLocaleString()}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={`/seller/products/edit?id=${encodeURIComponent(p._id)}`} className="px-3 py-1 rounded bg-white border text-sm">แก้ไข</a>
+                        <button onClick={()=>handleDeleteProduct(p._id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm">ลบ</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+             <div className="flex gap-2 mt-6">
+               <button className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2" onClick={handleEdit}>
+                 <Edit className="w-4 h-4" /> แก้ไขข้อมูล
+               </button>
+               <button className="px-6 py-2 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 flex items-center gap-2" onClick={handleDelete}>
+                 <Trash2 className="w-4 h-4" /> ลบร้านค้า
+               </button>
+             </div>
+           </div>
+         )}
+       </div>
+     </div>
+ 

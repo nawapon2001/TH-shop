@@ -250,9 +250,9 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-slate-50">
       <Header />
-      <div className="max-w-6xl mx-auto px-4 py-6 md:py-8">
+      <div className="max-w-7xl mx-auto px-6 py-10 md:py-12">
         {/* Title Row */}
         <div className="flex items-center justify-between mb-4">
           <button
@@ -269,8 +269,8 @@ export default function CheckoutPage() {
           {/* Left: Form */}
           <section className="md:col-span-7 space-y-6">
             {/* Recipient */}
-            <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-orange-900 mb-3 flex items-center gap-2">
+            <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-orange-50 border border-transparent">
+              <h2 className="text-lg md:text-xl font-semibold text-orange-900 mb-4 flex items-center gap-3">
                 <User className="w-4 h-4" /> ข้อมูลผู้รับ
               </h2>
               <div className="grid gap-3">
@@ -312,8 +312,8 @@ export default function CheckoutPage() {
             </div>
 
             {/* Delivery */}
-            <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-orange-900 mb-3 flex items-center gap-2">
+            <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-orange-50 border border-transparent">
+              <h2 className="text-lg md:text-xl font-semibold text-orange-900 mb-4 flex items-center gap-3">
                 <Truck className="w-4 h-4" /> วิธีจัดส่ง
               </h2>
               <div className="grid sm:grid-cols-2 gap-3">
@@ -337,8 +337,8 @@ export default function CheckoutPage() {
             </div>
 
             {/* Payment */}
-            <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-orange-900 mb-3 flex items-center gap-2">
+            <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-orange-50 border border-transparent">
+              <h2 className="text-lg md:text-xl font-semibold text-orange-900 mb-4 flex items-center gap-3">
                 <CreditCard className="w-4 h-4" /> วิธีชำระเงิน
               </h2>
               <div className="grid sm:grid-cols-2 gap-3">
@@ -360,7 +360,7 @@ export default function CheckoutPage() {
 
               {/* PromptPay QR */}
               {payment === 'transfer' && (
-                <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-4">
+                <div className="mt-4 rounded-xl bg-orange-50/60 p-4 space-y-4 ring-1 ring-orange-100">
                   <div>
                     <div className="flex items-center gap-2 text-orange-900 font-semibold mb-2">
                       <QrCode className="w-4 h-4" /> สแกนจ่ายด้วย PromptPay
@@ -406,11 +406,11 @@ export default function CheckoutPage() {
                           onChange={(e) => { setTransferAmountInput(e.target.value); setAmountVerified(null) }}
                           placeholder={expectedAmountStr}
                           inputMode="decimal"
-                          className="w-full h-10 px-3 rounded-lg border border-orange-200 focus:ring-2 focus:ring-orange-300 outline-none text-sm"
+                          className="w-full h-11 px-4 rounded-lg border border-orange-200 focus:ring-2 focus:ring-orange-300 outline-none text-sm bg-white"
                         />
-                        <div className="mt-1 text-xs text-gray-500">ยอดที่ต้องชำระ: ฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                        <div className="mt-1 text-xs text-gray-500">ยอดที่ต้องชำระ: <span className="font-semibold">฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                       </div>
-                      <button type="button" onClick={verifyAmountLocally} className="h-10 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold">
+                      <button type="button" onClick={verifyAmountLocally} className="h-11 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold px-4 shadow-sm transition">
                         ตรวจสอบยอด
                       </button>
                     </div>
@@ -434,8 +434,8 @@ export default function CheckoutPage() {
           {/* Right: Summary */}
           <aside className="md:col-span-5">
             <div className="md:sticky md:top-6 space-y-4">
-              <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-                <h2 className="text-base font-semibold text-orange-900 mb-3 flex items-center gap-2">
+              <div className="rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-orange-50 border border-transparent">
+                <h2 className="text-lg md:text-xl font-semibold text-orange-900 mb-3 flex items-center gap-3">
                   <ShoppingBag className="w-4 h-4" /> สรุปคำสั่งซื้อ
                 </h2>
 
@@ -496,10 +496,10 @@ export default function CheckoutPage() {
                   type="submit"
                   disabled={primaryBtnDisabled}
                   className={
-                    'mt-4 w-full h-12 rounded-xl text-white font-semibold shadow inline-flex items-center justify-center gap-2 ' +
+                    'mt-4 w-full h-12 rounded-xl text-white font-semibold shadow-lg inline-flex items-center justify-center gap-2 transition ' +
                     (primaryBtnDisabled
                       ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-orange-600 hover:bg-orange-700')
+                      : 'bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600')
                   }
                 >
                   {loading && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -551,7 +551,7 @@ export default function CheckoutPage() {
 
       {/* Mobile bottom CTA */}
       {cart.length > 0 && (
-        <div className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-orange-100 p-3">
+        <div className="md:hidden fixed bottom-4 inset-x-4 z-40 bg-white/95 backdrop-blur border border-orange-100 p-3 rounded-xl shadow-lg">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
             <div>
               <div className="text-xs text-gray-500">ยอดชำระ</div>
@@ -564,8 +564,8 @@ export default function CheckoutPage() {
               }}
               disabled={primaryBtnDisabled}
               className={
-                'flex-1 h-12 rounded-full text-white font-semibold shadow ' +
-                (primaryBtnDisabled ? 'bg-gray-300' : 'bg-orange-600')
+                'flex-1 h-12 rounded-full text-white font-semibold shadow-lg transition ' +
+                (primaryBtnDisabled ? 'bg-gray-300' : 'bg-gradient-to-r from-orange-600 to-amber-500')
               }
             >
               ชำระเงิน
@@ -580,7 +580,7 @@ export default function CheckoutPage() {
 /* ---------- UI Bits ---------- */
 function Row({ label, value, bold, valueClass }: { label: string; value: string; bold?: boolean; valueClass?: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between py-0.5">
       <span className={'text-gray-600 ' + (bold ? 'font-semibold' : '')}>{label}</span>
       <span className={(bold ? 'font-extrabold ' : 'font-semibold ') + (valueClass || '')}>{value}</span>
     </div>
@@ -611,8 +611,8 @@ function Field({
       <label className="block text-sm font-medium mb-1 text-gray-800">{label}</label>
       <div
         className={
-          'flex items-center gap-2 h-11 px-3 rounded-xl border bg-white shadow-sm focus-within:ring-2 ' +
-          (error ? 'border-red-300 bg-red-50/40 focus-within:ring-red-200' : 'border-orange-200 focus-within:ring-orange-300')
+          'flex items-center gap-2 h-12 px-4 rounded-xl bg-white transition-shadow ' +
+          (error ? 'ring-1 ring-red-200 border border-red-100 shadow-sm' : 'ring-1 ring-transparent border border-orange-100 shadow-sm focus-within:ring-orange-200')
         }
       >
         {icon}
@@ -652,8 +652,8 @@ function Textarea({
       <label className="block text-sm font-medium mb-1 text-gray-800">{label}</label>
       <div
         className={
-          'flex items-start gap-2 min-h-[44px] px-3 py-2 rounded-xl border bg-white shadow-sm focus-within:ring-2 ' +
-          (error ? 'border-red-300 bg-red-50/40 focus-within:ring-red-200' : 'border-orange-200 focus-within:ring-orange-300')
+          'flex items-start gap-3 min-h-[52px] px-4 py-3 rounded-xl bg-white shadow-sm transition ' +
+          (error ? 'ring-1 ring-red-200 border border-red-100' : 'ring-1 ring-transparent border border-orange-100 focus-within:ring-orange-200')
         }
       >
         <div className="pt-1">{icon}</div>
@@ -691,12 +691,12 @@ function RadioCard({
       type="button"
       onClick={onClick}
       className={
-        'w-full text-left rounded-xl border p-3 hover:bg-orange-50 transition ' +
-        (selected ? 'border-orange-500 bg-orange-50/70' : 'border-orange-200 bg-white')
+        'w-full text-left rounded-xl p-3 transition-transform transform hover:-translate-y-0.5 ' +
+        (selected ? 'bg-gradient-to-r from-orange-50 to-white border border-orange-200 shadow-sm ring-1 ring-orange-100' : 'bg-white border border-orange-100')
       }
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-3">
           <div className="mt-0.5 text-orange-800">{icon}</div>
           <div>
             <div className="font-semibold text-gray-900">{label}</div>
