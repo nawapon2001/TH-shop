@@ -1,37 +1,37 @@
+import { MongoClient } from 'mongodb'
 
-import mongoose from 'mongoose';
+// รองรับทั้ง MONGODB_URI / MONGODB_DB และ MONGO_URI / MONGO_DB
+const uri = process.env.MONGODB_URI || process.env.MONGO_URI || ''
+const dbName = process.env.MONGODB_DB || process.env.MONGO_DB || undefined
 
-const MONGO_URI = process.env.MONGO_URI!;
-
-if (!MONGO_URI) {
-  throw new Error("⚠️ MONGO_URI not set in .env.local");
-}
-
-interface MongooseCache {
-  conn: mongoose.Mongoose | null;
-  promise: Promise<mongoose.Mongoose> | null;
+if (!uri) {
+  // ไม่โยน error เพื่อไม่ให้ dev server แตก แต่แจ้งเตือนใน log
+  // ตั้งค่า MONGODB_URI หรือ MONGO_URI ใน .env.local
+  console.warn('MongoDB URI not set (MONGODB_URI or MONGO_URI). Database calls will fail.')
 }
 
 declare global {
-  var mongoose: MongooseCache | undefined;
+  // allow global caching across module reloads in development
+  // eslint-disable-next-line no-var
+  var __mongoClientPromise: Promise<MongoClient> | undefined
 }
 
-let cached = global.mongoose || { conn: null, promise: null };
+let clientPromise: Promise<MongoClient>
 
-export async function connectToDatabase() {
-  if (cached.conn) {
-    return cached.conn;
-  }
+if (!global.__mongoClientPromise) {
+  const client = new MongoClient(uri, {
+    // เพิ่ม options ถ้าต้องการ
+    // useNewUrlParser: true, useUnifiedTopology: true  // not needed with modern driver types
+  })
+  global.__mongoClientPromise = client.connect()
+}
 
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
+clientPromise = global.__mongoClientPromise!
 
-    cached.promise = mongoose.connect(MONGO_URI, opts).then((mongoose) => {
-      console.log('✅ Connected to MongoDB Atlas');
-      return mongoose;
-    });
+export async function getDb() {
+  const client = await clientPromise
+  return dbName ? client.db(dbName) : client.db()
+}
   }
 
   try {
