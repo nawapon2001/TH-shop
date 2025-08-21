@@ -31,13 +31,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'invalid orderId' }, { status: 400, headers: corsHeaders })
     }
 
-    const doc = await Order.findById(orderId, { messages: 1 }).lean()
+  const doc = (await Order.findById(orderId, { messages: 1 }).lean()) as any
     if (!doc) {
       return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404, headers: corsHeaders })
     }
 
     // เรียงแชทจากเก่า -> ใหม่
-    const messages = (doc.messages || []).sort(
+  const messages = ((doc.messages as any[]) || []).sort(
       (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     )
 

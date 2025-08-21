@@ -78,6 +78,26 @@ const saveAdmins = (list: AdminCred[]) => {
 }
 
 /* ---------- หน้า Admin ---------- */
+// safe clipboard copy with fallback
+export const copyToClipboard = async (text: string) => {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+    // fallback
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+    return true
+  } catch {
+    return false
+  }
+}
+
 export default function AdminPage() {
   /* ---------- Auth (demo) ---------- */
   const [adminUser, setAdminUser] = useState('')
@@ -103,26 +123,6 @@ export default function AdminPage() {
 
   // ensure router is available for navigation (fix ReferenceError)
   const router = useRouter()
-
-  // safe clipboard copy with fallback
-  const copyToClipboard = async (text: string) => {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text)
-        return true
-      }
-      // fallback
-      const ta = document.createElement('textarea')
-      ta.value = text
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      ta.remove()
-      return true
-    } catch {
-      return false
-    }
-  }
 
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault()
@@ -248,24 +248,37 @@ export default function AdminPage() {
     if (!name || !price || !selectedCategory || productFiles.length===0) {
       return Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบถ้วน', text: 'กรุณากรอกข้อมูลให้ครบถ้วนและเลือกรูปภาพ' })
     }
-    const form = new FormData()
-    form.append('name', name)
-    form.append('price', String(price))
-    form.append('category', selectedCategory)
-    form.append('description', description)
-    productFiles.forEach(f => form.append('images', f))
 
-    const cleanOptions = sanitizeOptions(options)
-    form.append('options', JSON.stringify(cleanOptions))
+    try {
+      // 1) upload product images to /api/upload
+      const uploadFd = new FormData()
+      productFiles.forEach(f => uploadFd.append('files', f))
+      const upRes = await fetch('/api/upload', { method: 'POST', body: uploadFd })
+      if (!upRes.ok) throw new Error('upload failed')
+      const upJson = await upRes.json().catch(()=>({}))
+      const imageUrls: string[] = Array.isArray(upJson?.urls) ? upJson.urls : []
 
-    const res = await fetch('/api/products', { method: 'POST', body: form })
-    if (res.ok) {
+      // 2) send product payload with image URLs
+      const payload = {
+        name,
+        price: Number(price),
+        category: selectedCategory,
+        description,
+        images: imageUrls,
+        options: sanitizeOptions(options)
+      }
+      const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({}))
+        throw new Error(err?.message || 'create product failed')
+      }
+      // success
       setName(''); setPrice(''); setSelectedCategory(''); setDescription(''); setProductFiles([]); setOptions([])
       await fetchProducts()
       Swal.fire({ icon: 'success', title: 'เพิ่มสินค้าสำเร็จ', timer: 1500, showConfirmButton: false })
-    } else {
-      const err = await res.json().catch(()=>({}))
-      Swal.fire({ icon: 'error', title: 'เพิ่มสินค้าไม่สำเร็จ', text: err?.message || 'เพิ่มสินค้าไม่สำเร็จ' })
+    } catch (err:any) {
+      console.error('product upload/create error', err)
+      Swal.fire({ icon: 'error', title: 'เพิ่มสินค้าไม่สำเร็จ', text: err?.message || '' })
     }
   }
 
@@ -314,66 +327,145 @@ export default function AdminPage() {
   }
 
   if (!isAuth) {
-    // แสดงเฉพาะฟอร์มล็อกอินเท่านั้น (ไม่ให้สร้าง admin ก่อนล็อกอิน)
+    // Enhanced login form with beautiful styling
     return (
-      <div className="min-h-screen grid place-items-center bg-gradient-to-br from-orange-50 to-amber-50">
-        <div className="w-full max-w-md rounded-2xl border border-orange-200 bg-white/90 backdrop-blur shadow-xl p-8">
-          <div className="flex items-center gap-2 text-orange-700 mb-2"><LogIn className="w-5 h-5" /><h2 className="text-2xl font-extrabold tracking-tight">เข้าสู่ระบบผู้ดูแล</h2></div>
-          <p className="text-sm text-slate-600 mb-6">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อจัดการระบบ</p>
-          <form onSubmit={handleAuth} className="grid gap-3">
-            <input type="text" placeholder="Admin Username" className="border border-orange-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" value={adminUser} onChange={(e)=>setAdminUser(e.target.value)} />
-            <input type="password" placeholder="Admin Password" className="border border-orange-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" value={adminPass} onChange={(e)=>setAdminPass(e.target.value)} />
-            <button className="mt-2 h-11 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 text-white font-semibold shadow hover:from-orange-600 hover:to-amber-500 transition-all" type="submit">เข้าสู่ระบบ</button>
-          </form>
-          {authError && <div className="text-red-600 text-center font-medium mt-3">{authError}</div>}
+      <div className="min-h-screen grid place-items-center bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50 relative overflow-hidden">
+        {/* Background decorations */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-200/40 to-amber-200/40 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-rose-200/40 to-orange-200/40 rounded-full blur-3xl"></div>
         </div>
+        
+        <div className="relative w-full max-w-md">
+          {/* Floating cards effect */}
+          <div className="absolute -top-6 -left-6 w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-400 rounded-xl rotate-12 opacity-20 blur-sm"></div>
+          <div className="absolute -top-4 right-8 w-8 h-8 bg-gradient-to-br from-rose-400 to-orange-400 rounded-lg -rotate-12 opacity-30 blur-sm"></div>
+          
+          <div className="relative rounded-3xl border border-orange-200/50 bg-white/80 backdrop-blur-xl shadow-2xl p-8 transition-all duration-500 hover:shadow-3xl">
+            {/* Glow effect */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 blur-xl"></div>
+            
+            <div className="relative">
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 mb-4 shadow-lg">
+                  <LogIn className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                  เข้าสู่ระบบผู้ดูแล
+                </h2>
+                <p className="text-slate-600 mt-2">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อจัดการระบบ</p>
+              </div>
+              
+              <form onSubmit={handleAuth} className="space-y-4">
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Admin Username" 
+                    className="w-full h-14 px-4 rounded-2xl border-2 border-orange-200/50 bg-white/70 backdrop-blur-sm focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100 transition-all duration-300 placeholder:text-slate-400"
+                    value={adminUser} 
+                    onChange={(e)=>setAdminUser(e.target.value)} 
+                  />
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/5 to-amber-500/5 pointer-events-none"></div>
+                </div>
+                
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    placeholder="Admin Password" 
+                    className="w-full h-14 px-4 rounded-2xl border-2 border-orange-200/50 bg-white/70 backdrop-blur-sm focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100 transition-all duration-300 placeholder:text-slate-400"
+                    value={adminPass} 
+                    onChange={(e)=>setAdminPass(e.target.value)} 
+                  />
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/5 to-amber-500/5 pointer-events-none"></div>
+                </div>
+                
+                <button 
+                  className="w-full h-14 mt-6 rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 bg-size-200 bg-pos-0 hover:bg-pos-100 text-white font-bold shadow-xl hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 relative overflow-hidden group" 
+                  type="submit"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                  <span className="relative">เข้าสู่ระบบ</span>
+                </button>
+              </form>
+              
+              {authError && (
+                <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-center font-medium animate-shake">
+                  {authError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <style jsx>{`
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+          }
+          .animate-shake {
+            animation: shake 0.5s ease-in-out;
+          }
+          .bg-size-200 { background-size: 200% 100%; }
+          .bg-pos-0 { background-position: 0% 50%; }
+          .bg-pos-100 { background-position: 100% 50%; }
+        `}</style>
       </div>
     )
   }
 
-  // หลังจากเข้าสู่ระบบแล้ว (isAuth = true) ให้แสดงหน้าจอจัดการ (รวม Admins เป็น tab ย่อย)
+  // Enhanced main admin interface
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
-      {/* full-width layout (sidebar + main) */}
-      <div className="w-full mx-auto px-4 md:px-6 grid lg:grid-cols-[320px_1fr]">
-         {/* Sidebar (left) */}
-         <aside className="hidden lg:flex sticky top-0 h-[100dvh] flex-col border-r border-orange-200 bg-white/75 backdrop-blur p-4 gap-4">
-           <div className="flex items-center justify-between gap-3 mb-3">
-             <div className="flex items-center gap-3">
-               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center text-white font-extrabold shadow">SS</div>
-               <div>
-                 <div className="text-sm font-extrabold text-orange-700">SignShop</div>
-                 <div className="text-xs text-slate-500 -mt-0.5">แดชบอร์ดผู้ดูแล</div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50/30 to-amber-50/30 relative">
+      {/* Animated background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-orange-200/20 to-amber-200/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-1/2 -left-40 w-80 h-80 bg-gradient-to-tr from-rose-200/20 to-orange-200/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      {/* Enhanced layout */}
+      <div className="relative w-full mx-auto px-4 md:px-6 grid lg:grid-cols-[350px_1fr] gap-6">
+         {/* Enhanced Sidebar */}
+         <aside className="hidden lg:flex sticky top-6 h-[calc(100vh-3rem)] flex-col rounded-3xl border border-orange-200/50 bg-white/80 backdrop-blur-xl shadow-2xl p-6 gap-6">
+           {/* Header with glow effect */}
+           <div className="relative">
+             <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-2xl blur-xl"></div>
+             <div className="relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-orange-500/5 to-amber-500/5 border border-orange-200/30">
+               <div className="flex items-center gap-3">
+                 <div className="relative">
+                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center text-white font-extrabold shadow-lg">
+                     SS
+                   </div>
+                   <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 blur opacity-50"></div>
+                 </div>
+                 <div>
+                   <div className="text-base font-extrabold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">SignShop</div>
+                   <div className="text-xs text-slate-500 -mt-0.5">แดชบอร์ดผู้ดูแล</div>
+                 </div>
+               </div>
+               <div className="flex items-center gap-2">
+                 <button 
+                   onClick={refreshAll} 
+                   title="รีเฟรช" 
+                   className="group w-10 h-10 rounded-xl bg-white/80 border border-orange-200 text-orange-700 flex items-center justify-center hover:bg-orange-50 hover:shadow-lg transition-all duration-300 hover:scale-110"
+                 >
+                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />}
+                 </button>
                </div>
              </div>
-             <div className="flex items-center gap-2">
-               <button onClick={refreshAll} title="รีเฟรช" className="w-9 h-9 rounded-lg bg-white border border-orange-200 text-orange-700 flex items-center justify-center hover:shadow-sm">
-                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-               </button>
-               <button onClick={() => setTab('admins')} title="เพิ่มผู้ดูแล" className="hidden xl:inline-flex items-center gap-2 px-3 h-9 rounded-full bg-orange-600 text-white text-sm shadow hover:bg-orange-700">+ ผู้ดูแล</button>
-             </div>
            </div>
-           {/* compact stat row */}
-           <div className="grid gap-2">
-             <div className="rounded-lg p-3 bg-white border border-orange-100 shadow-sm flex items-center gap-3">
-               <ImageIcon className="w-5 h-5 text-orange-500" />
-               <div className="text-xs text-slate-600">แบนเนอร์</div>
-               <div className="ml-auto text-sm font-bold text-orange-700">{bannerCount}</div>
-             </div>
-             <div className="rounded-lg p-3 bg-white border border-orange-100 shadow-sm flex items-center gap-3">
-               <Tag className="w-5 h-5 text-amber-500" />
-               <div className="text-xs text-slate-600">หมวดหมู่</div>
-               <div className="ml-auto text-sm font-bold text-orange-700">{categoryCount}</div>
-             </div>
-             <div className="rounded-lg p-3 bg-white border border-orange-100 shadow-sm flex items-center gap-3">
-               <PackagePlus className="w-5 h-5 text-green-600" />
-               <div className="text-xs text-slate-600">สินค้า</div>
-               <div className="ml-auto text-sm font-bold text-orange-700">{productCount}</div>
-             </div>
+
+           {/* Enhanced stats cards */}
+           <div className="grid gap-3">
+             <StatsCard icon={<ImageIcon className="w-5 h-5 text-orange-500" />} label="แบนเนอร์" value={bannerCount} color="orange" />
+             <StatsCard icon={<Tag className="w-5 h-5 text-amber-500" />} label="หมวดหมู่" value={categoryCount} color="amber" />
+             <StatsCard icon={<PackagePlus className="w-5 h-5 text-green-500" />} label="สินค้า" value={productCount} color="green" />
            </div>
-           <nav className="mt-4 grid gap-2">
-             <div className="text-xs text-slate-400 mt-2 mb-1">เมนู</div>
-             <NavButton icon={<Truck className="w-4 h-4" />} active={tab==='orders'} onClick={()=>setTab('orders')}>คำสั่งซื้อ</NavButton>
+
+           {/* Enhanced navigation */}
+           <nav className="flex-1 space-y-2">
+             <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-4 mb-3 px-3">เมนูหลัก</div>
+             <NavButton icon={<Truck className="w-4 h-4" />} active={tab==='orders'} onClick={()=>setTab('orders')} badge={orders.length}>คำสั่งซื้อ</NavButton>
              <NavButton icon={<ImageIcon className="w-4 h-4" />} active={tab==='banner'} onClick={()=>setTab('banner')}>แบนเนอร์</NavButton>
              <NavButton icon={<Tag className="w-4 h-4" />} active={tab==='category'} onClick={()=>setTab('category')}>หมวดหมู่</NavButton>
              <NavButton icon={<PackagePlus className="w-4 h-4" />} active={tab==='product'} onClick={()=>setTab('product')}>เพิ่มสินค้า</NavButton>
@@ -382,23 +474,40 @@ export default function AdminPage() {
            </nav>
          </aside>
  
-         {/* Main (center) */}
-         <main className="px-4 py-6">
-           {/* top toolbar */}
-           <div className="mb-4 flex items-center justify-between gap-3">
-             <div>
-               <h1 className="text-2xl font-extrabold text-orange-700">แดชบอร์ดผู้ดูแล</h1>
-               <p className="text-sm text-slate-500">จัดการสินค้า แบนเนอร์ หมวดหมู่ และคำสั่งซื้อ</p>
-             </div>
-             <div className="flex items-center gap-2">
-               <div className="relative">
-                 <input placeholder="ค้นหา (สินค้า/ออเดอร์)..." className="h-10 rounded-xl border border-orange-200 px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-orange-300" />
-                 <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+         {/* Enhanced Main Content */}
+         <main className="py-6 space-y-6">
+           {/* Enhanced top toolbar */}
+           <div className="relative">
+             <div className="absolute inset-0 bg-gradient-to-r from-orange-500/5 to-amber-500/5 rounded-3xl blur-xl"></div>
+             <div className="relative rounded-3xl border border-orange-200/50 bg-white/80 backdrop-blur-xl shadow-xl p-6">
+               <div className="flex items-center justify-between gap-4">
+                 <div>
+                   <h1 className="text-3xl font-extrabold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                     แดชบอร์ดผู้ดูแล
+                   </h1>
+                   <p className="text-slate-500 text-sm mt-1">จัดการสินค้า แบนเนอร์ หมวดหมู่ และคำสั่งซื้อ</p>
+                 </div>
+                 <div className="flex items-center gap-3">
+                   <div className="relative">
+                     <input 
+                       placeholder="ค้นหา (สินค้า/ออเดอร์)..." 
+                       className="h-12 w-64 rounded-2xl border border-orange-200/50 bg-white/70 backdrop-blur-sm px-4 pr-12 text-sm outline-none focus:ring-4 focus:ring-orange-100 focus:border-orange-400 transition-all duration-300 placeholder:text-slate-400" 
+                     />
+                     <Search className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                   </div>
+                   <button 
+                     onClick={() => setTab('admins')} 
+                     className="h-12 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden group"
+                   >
+                     <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                     <span className="relative">ผู้ดูแลใหม่</span>
+                   </button>
+                 </div>
                </div>
-               <button onClick={() => setTab('admins')} className="h-10 px-4 rounded-full bg-orange-600 text-white font-semibold shadow hover:bg-orange-700">ผู้ดูแลใหม่</button>
              </div>
            </div>
 
+           {/* Tab content with enhanced styling */}
            {tab === 'orders' && (
              <OrdersSection
                loading={loading}
@@ -609,49 +718,290 @@ export default function AdminPage() {
  
         </main>
  
-        {/* Chat panel (right) — collapsible (pinned, no backdrop) */}
+        {/* Enhanced Chat panel */}
         <>
-          {/* Collapsed: floating button at middle-right */}
           {!chatOpen && (
             <button
               type="button"
               onClick={() => setChatOpen(true)}
               title="เปิดแชทคำสั่งซื้อ"
-              className="fixed right-6 top-1/2 -translate-y-1/2 z-50 inline-flex items-center justify-center w-14 h-14 rounded-full bg-orange-600 text-white shadow-2xl hover:scale-105 transition-transform"
+              className="fixed right-6 top-1/2 -translate-y-1/2 z-50 group"
             >
-              <MessageCircle className="w-6 h-6" />
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300">
+                  <MessageCircle className="w-7 h-7" />
+                </div>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 blur opacity-50 group-hover:opacity-75 transition-opacity duration-300"></div>
+                {selectedOrderId && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold animate-pulse">!</div>
+                )}
+              </div>
             </button>
           )}
 
-          {/* Expanded: side panel on the right (no backdrop) */}
           {chatOpen && (
-            <div className="fixed right-6 top-20 z-50 w-[380px] h-[70vh] bg-white rounded-l-2xl shadow-2xl border border-orange-100 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-orange-100">
-                <div className="flex items-center gap-2">
-                  <MessageCircle className="w-5 h-5 text-orange-700" />
-                  <div className="font-semibold text-orange-700">แชทคำสั่งซื้อ</div>
-                  <div className="text-xs text-slate-500 ml-2">
-                    {selectedOrderId ? `#${selectedOrderId.slice(-6)}` : 'เลือกคำสั่งซื้อเพื่อเริ่มแชท'}
+            <div className="fixed right-6 top-20 z-50 w-[400px] h-[75vh] bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-orange-100 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
+                    <MessageCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-orange-700">แชทคำสั่งซื้อ</div>
+                    <div className="text-xs text-slate-500">
+                      {selectedOrderId ? `#${selectedOrderId.slice(-6)}` : 'เลือกคำสั่งซื้อเพื่อเริ่มแชท'}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setChatOpen(false)}
-                    className="h-9 w-9 grid place-items-center rounded-md hover:bg-orange-50"
-                    aria-label="ย่อแผงแชท"
-                  >
-                    ×
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setChatOpen(false)}
+                  className="h-10 w-10 grid place-items-center rounded-xl hover:bg-orange-100 transition-colors duration-200 text-slate-600 hover:text-orange-700"
+                >
+                  ×
+                </button>
               </div>
               <div className="flex-1 overflow-auto">
-                {selectedOrderId ? <OrderChatPanel orderId={selectedOrderId} /> : <div className="p-4 text-sm text-slate-500">กรุณาเลือกคำสั่งซื้อเพื่อเริ่มแชท</div>}
+                {selectedOrderId ? <OrderChatPanel orderId={selectedOrderId} /> : (
+                  <div className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center">
+                      <MessageCircle className="w-8 h-8 text-orange-500" />
+                    </div>
+                    <div className="text-sm text-slate-500">กรุณาเลือกคำสั่งซื้อเพื่อเริ่มแชท</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </>
       </div>
+    </div>
+  )
+}
+
+// Enhanced StatsCard component
+function StatsCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: 'orange' | 'amber' | 'green' }) {
+  const colorClasses: Record<'orange' | 'amber' | 'green', string> = {
+    orange: 'from-orange-500/10 to-orange-600/10 border-orange-200/50 text-orange-700',
+    amber: 'from-amber-500/10 to-amber-600/10 border-amber-200/50 text-amber-700',
+    green: 'from-green-500/10 to-green-600/10 border-green-200/50 text-green-700'
+  }
+  const getColorClass = (k: 'orange'|'amber'|'green') => colorClasses[k]
+  
+  return (
+    <div className={`relative group cursor-default`}>
+      <div className="absolute inset-0 bg-gradient-to-r opacity-50 rounded-2xl blur-xl transition-opacity group-hover:opacity-75"></div>
+  <div className={`relative rounded-2xl p-4 bg-gradient-to-r ${getColorClass(color)} border backdrop-blur-sm transform hover:scale-105 transition-all duration-300`}>
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0">{icon}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium opacity-75">{label}</div>
+            <div className="text-xl font-bold">{value.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Enhanced NavButton component
+function NavButton({ active, children, onClick, icon, badge }: { 
+  active?: boolean; 
+  children: React.ReactNode; 
+  onClick: () => void; 
+  icon?: React.ReactNode;
+  badge?: number;
+}) {
+  return (
+    <button 
+      onClick={onClick} 
+      className={`relative group h-12 px-4 rounded-2xl text-sm font-semibold inline-flex items-center gap-3 transition-all duration-300 transform w-full text-left overflow-hidden ${
+        active 
+          ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg scale-105' 
+          : 'bg-white/50 text-orange-700 hover:bg-orange-50 border border-orange-100/50 hover:border-orange-200 hover:scale-105'
+      }`}
+    >
+      {active && <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 transform -skew-x-12 animate-pulse"></div>}
+      <span className={`relative z-10 w-5 h-5 ${active ? 'text-white' : 'text-orange-600'}`}>{icon}</span>
+      <span className="relative z-10 truncate flex-1">{children}</span>
+      {badge && badge > 0 && (
+        <span className={`relative z-10 text-xs px-2 py-0.5 rounded-full font-bold ${
+          active ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-700'
+        }`}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+      {active && <span className="relative z-10 text-xs bg-white/20 px-2 py-0.5 rounded-full">●</span>}
+    </button>
+  )
+}
+
+// Enhanced SectionCard component
+function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <section className="relative group">
+      <div className="absolute inset-0 bg-gradient-to-r from-orange-500/5 to-amber-500/5 rounded-3xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500"></div>
+      <div className="relative rounded-3xl border border-orange-200/50 bg-white/80 backdrop-blur-xl shadow-xl p-8 transition-all duration-500 hover:shadow-2xl">
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <div className="inline-flex items-center gap-4 mb-2">
+              <div className="w-1 h-10 rounded-full bg-gradient-to-b from-orange-400 to-amber-400"></div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">{title}</h2>
+            </div>
+            {subtitle && <p className="text-slate-500 text-sm ml-5">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="relative">{children}</div>
+      </div>
+    </section>
+  )
+}
+
+function getBannerSrc(b: { url?: string; image?: string; icon?: string }) {
+  const raw = (b?.url || b?.image || b?.icon || '').trim()
+  if (!raw) return ''
+  if (/^data:/.test(raw)) return raw
+  if (/^https?:\/\//.test(raw)) return raw
+  if (raw.startsWith('//')) return raw
+  if (raw.startsWith('/')) return raw
+  return `/banners/${raw.replace(/^\/?banners\//, '')}`
+}
+
+function Clock(props: any) { 
+  return <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 
+}
+
+/* ---------- OptionBuilder ---------- */
+function OptionBuilder({
+  value, onChange
+}: {
+  value: ProductOption[]
+  onChange: (next: ProductOption[]) => void
+}) {
+  const [optName, setOptName] = useState('')
+  const [inputByIdx, setInputByIdx] = useState<Record<number, string>>({})
+
+  const addOption = () => {
+    const name = ensureString(optName)
+    if (!name) return
+    if (value.some(v => v.name.toLowerCase() === name.toLowerCase())) {
+      Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ', text: 'โปรดใช้ชื่ออื่น' }); return
+    }
+    onChange([...value, { name, values: [] }])
+    setOptName('')
+  }
+
+  const removeOption = (idx: number) => {
+    onChange(value.filter((_, i) => i !== idx))
+    const next = { ...inputByIdx }; delete next[idx]; setInputByIdx(next)
+  }
+
+  const addValue = (idx: number) => {
+    const raw = ensureString(inputByIdx[idx])
+    if (!raw) return
+    const tokens = raw.split(',').map(s => ensureString(s)).filter(Boolean)
+    const curr = new Set(value[idx].values)
+    let changed = false
+    tokens.forEach(t => { if (!curr.has(t)) { curr.add(t); changed = true } })
+    if (!changed) { setInputByIdx(prev => ({ ...prev, [idx]: '' })); return }
+    const next = value.map((o, i) => i === idx ? { ...o, values: Array.from(curr) } : o)
+    onChange(next)
+    setInputByIdx(prev => ({ ...prev, [idx]: '' }))
+  }
+
+  const removeValue = (optIdx: number, vIdx: number) => {
+    const next = value.map((o, i) =>
+      i === optIdx ? { ...o, values: o.values.filter((_, j) => j !== vIdx) } : o
+    )
+    onChange(next)
+  }
+
+  const renameOption = (idx: number, name: string) => {
+    const newName = ensureString(name)
+    const dup = value.some((o, i) => i !== idx && o.name.toLowerCase() === newName.toLowerCase())
+    if (dup) return Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ' })
+    const next = value.map((o, i) => i === idx ? { ...o, name: newName } : o)
+    onChange(next)
+  }
+
+  const Preview = () => (
+    <div className="mt-4 border-t border-orange-200 pt-3">
+      <div className="text-sm text-slate-600 mb-2">พรีวิวการแสดงผล:</div>
+      <div className="grid gap-3">
+        {value.map((opt, i) => (
+          <div key={i}>
+            <div className="text-sm font-semibold mb-1">{opt.name}</div>
+            <div className="flex flex-wrap gap-2">
+              {opt.values.map((v, j) => (
+                <span key={j} className="px-3 py-1 rounded-full border text-sm font-medium bg-orange-50 text-gray-700 border-orange-200 shadow">
+                  {v}
+                </span>
+              ))}
+              {opt.values.length === 0 && <span className="text-xs text-slate-500">ยังไม่มีค่า</span>}
+            </div>
+          </div>
+        ))}
+        {!value.length && <div className="text-xs text-slate-500">ยังไม่ได้เพิ่มตัวเลือก</div>}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border border-orange-200 p-4 bg-orange-50/40">
+      <div className="flex flex-col md:flex-row gap-2 items-stretch">
+        <input
+          className="flex-1 border border-orange-200 rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+          placeholder="ชื่อตัวเลือก (เช่น สี, ขนาด)"
+          value={optName}
+          onChange={e => setOptName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
+        />
+        <button type="button" onClick={addOption}
+          className="px-4 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700">
+          เพิ่มตัวเลือก
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        {value.map((opt, idx) => (
+          <div key={idx} className="rounded-xl bg-white border border-orange-200 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                value={opt.name}
+                onChange={e => renameOption(idx, e.target.value)}
+                className="font-semibold text-orange-700 bg-transparent border-0 outline-none flex-1"
+              />
+              <button type="button" onClick={() => removeOption(idx)}
+                className="text-xs text-red-600 hover:underline">ลบตัวเลือก</button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-2">
+              {opt.values.map((val, vIdx) => (
+                <span key={vIdx} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-200 shadow">
+                  {val}
+                  <button type="button" className="text-[10px] text-red-600" onClick={() => removeValue(idx, vIdx)}>✕</button>
+                </span>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                value={inputByIdx[idx] ?? ''}
+                onChange={e => setInputByIdx(prev => ({ ...prev, [idx]: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValue(idx) } }}
+                className="flex-1 border border-orange-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="เพิ่มค่า (แยกหลายค่าด้วย , แล้วกด Enter)"
+              />
+              <button type="button" onClick={() => addValue(idx)}
+                className="h-9 px-3 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700">
+                เพิ่มค่า
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Preview />
     </div>
   )
 }
@@ -784,7 +1134,13 @@ function OrdersSection({
                          <input className="h-10 flex-1 rounded-lg border border-orange-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-orange-300" placeholder="กรอกเลขขนส่ง" value={shippingInputs[o._id] ?? ''} onChange={(e)=>setShippingInputs(prev=>({ ...prev, [o._id]: e.target.value }))} onClick={(e)=>e.stopPropagation()} />
                          <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUpdateShipping(o._id, shippingInputs[o._id] ?? '') }} className="h-10 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700">บันทึก</button>
                          {o.shippingNumber && (
-                           <button onClick={async (e: React.MouseEvent) => { e.stopPropagation(); if (o.shippingNumber) { await copyToClipboard(o.shippingNumber); Swal.fire({ icon: 'success', title: 'คัดลอกแล้ว', timer: 900, showConfirmButton: false }) } }} className="h-10 rounded-lg bg-white px-3 border border-orange-200 text-slate-700 hover:bg-orange-50" title="คัดลอกเลขขนส่ง">
+                           <button onClick={async (e: React.MouseEvent) => { 
+                             e.stopPropagation(); 
+                             if (o.shippingNumber) { 
+                               await copyToClipboard(o.shippingNumber); 
+                               Swal.fire({ icon: 'success', title: 'คัดลอกแล้ว', timer: 900, showConfirmButton: false }) 
+                             } 
+                           }} className="h-10 rounded-lg bg-white px-3 border border-orange-200 text-slate-700 hover:bg-orange-50" title="คัดลอกเลขขนส่ง">
                              <Copy className="w-4 h-4" />
                            </button>
                          )}
@@ -947,180 +1303,3 @@ function OrdersSection({
      </SectionCard>
    )
  }
-
-/* ---------- UI atoms ---------- */
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-orange-100 bg-white shadow-md p-6 transition-shadow hover:shadow-lg">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-3">
-            <div className="w-2.5 h-8 rounded-md bg-gradient-to-b from-orange-400 to-amber-300" />
-            <h2 className="text-2xl font-bold text-orange-700">{title}</h2>
-          </div>
-          {subtitle && <p className="text-slate-500 text-sm mt-1">{subtitle}</p>}
-        </div>
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
-  )
-}
-
-function NavButton({ active, children, onClick, icon }: { active?: boolean; children: React.ReactNode; onClick: () => void; icon?: React.ReactNode }) {
-  return (
-    <button onClick={onClick} className={`h-11 px-3 rounded-lg text-sm font-semibold inline-flex items-center gap-3 transition transform w-full text-left ${active ? 'bg-orange-600 text-white shadow-md ring-1 ring-orange-200' : 'bg-white text-orange-700 hover:bg-orange-50 border border-orange-100'} `}>
-      <span className={`w-5 h-5 ${active ? 'text-white' : 'text-orange-600'}`}>{icon}</span>
-      <span className="truncate">{children}</span>
-      {active && <span className="ml-auto text-xs bg-white/10 px-2 py-0.5 rounded-full">Active</span>}
-    </button>
-  )
-}
-
-function getBannerSrc(b: { url?: string; image?: string; icon?: string }) {
-  const raw = (b?.url || b?.image || b?.icon || '').trim()
-  if (!raw) return ''
-  if (/^data:/.test(raw)) return raw
-  if (/^https?:\/\//.test(raw)) return raw
-  if (raw.startsWith('//')) return raw
-  if (raw.startsWith('/')) return raw
-  return `/banners/${raw.replace(/^\/?banners\//, '')}`
-}
-
-function Clock(props: any) { 
-  return <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 
-}
-
-/* ---------- OptionBuilder ---------- */
-function OptionBuilder({
-  value, onChange
-}: {
-  value: ProductOption[]
-  onChange: (next: ProductOption[]) => void
-}) {
-  const [optName, setOptName] = useState('')
-  const [inputByIdx, setInputByIdx] = useState<Record<number, string>>({})
-
-  const addOption = () => {
-    const name = ensureString(optName)
-    if (!name) return
-    if (value.some(v => v.name.toLowerCase() === name.toLowerCase())) {
-      Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ', text: 'โปรดใช้ชื่ออื่น' }); return
-    }
-    onChange([...value, { name, values: [] }])
-    setOptName('')
-  }
-
-  const removeOption = (idx: number) => {
-    onChange(value.filter((_, i) => i !== idx))
-    const next = { ...inputByIdx }; delete next[idx]; setInputByIdx(next)
-  }
-
-  const addValue = (idx: number) => {
-    const raw = ensureString(inputByIdx[idx])
-    if (!raw) return
-    const tokens = raw.split(',').map(s => ensureString(s)).filter(Boolean)
-    const curr = new Set(value[idx].values)
-    let changed = false
-    tokens.forEach(t => { if (!curr.has(t)) { curr.add(t); changed = true } })
-    if (!changed) { setInputByIdx(prev => ({ ...prev, [idx]: '' })); return }
-    const next = value.map((o, i) => i === idx ? { ...o, values: Array.from(curr) } : o)
-    onChange(next)
-    setInputByIdx(prev => ({ ...prev, [idx]: '' }))
-  }
-
-  const removeValue = (optIdx: number, vIdx: number) => {
-    const next = value.map((o, i) =>
-      i === optIdx ? { ...o, values: o.values.filter((_, j) => j !== vIdx) } : o
-    )
-    onChange(next)
-  }
-
-  const renameOption = (idx: number, name: string) => {
-    const newName = ensureString(name)
-    const dup = value.some((o, i) => i !== idx && o.name.toLowerCase() === newName.toLowerCase())
-    if (dup) return Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ' })
-    const next = value.map((o, i) => i === idx ? { ...o, name: newName } : o)
-    onChange(next)
-  }
-
-  const Preview = () => (
-    <div className="mt-4 border-t border-orange-200 pt-3">
-      <div className="text-sm text-slate-600 mb-2">พรีวิวการแสดงผล:</div>
-      <div className="grid gap-3">
-        {value.map((opt, i) => (
-          <div key={i}>
-            <div className="text-sm font-semibold mb-1">{opt.name}</div>
-            <div className="flex flex-wrap gap-2">
-              {opt.values.map((v, j) => (
-                <span key={j} className="px-3 py-1 rounded-full border text-sm font-medium bg-orange-50 text-gray-700 border-orange-200 shadow">
-                  {v}
-                </span>
-              ))}
-              {opt.values.length === 0 && <span className="text-xs text-slate-500">ยังไม่มีค่า</span>}
-            </div>
-          </div>
-        ))}
-        {!value.length && <div className="text-xs text-slate-500">ยังไม่ได้เพิ่มตัวเลือก</div>}
-      </div>
-    </div>
-  )
-
-  return (
-    <div className="rounded-2xl border border-orange-200 p-4 bg-orange-50/40">
-      <div className="flex flex-col md:flex-row gap-2 items-stretch">
-        <input
-          className="flex-1 border border-orange-200 rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
-          placeholder="ชื่อตัวเลือก (เช่น สี, ขนาด)"
-          value={optName}
-          onChange={e => setOptName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
-        />
-        <button type="button" onClick={addOption}
-          className="px-4 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700">
-          เพิ่มตัวเลือก
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-4">
-        {value.map((opt, idx) => (
-          <div key={idx} className="rounded-xl bg-white border border-orange-200 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                value={opt.name}
-                onChange={e => renameOption(idx, e.target.value)}
-                className="font-semibold text-orange-700 bg-transparent border-0 outline-none flex-1"
-              />
-              <button type="button" onClick={() => removeOption(idx)}
-                className="text-xs text-red-600 hover:underline">ลบตัวเลือก</button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-2">
-              {opt.values.map((val, vIdx) => (
-                <span key={vIdx} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-200 shadow">
-                  {val}
-                  <button type="button" className="text-[10px] text-red-600" onClick={() => removeValue(idx, vIdx)}>✕</button>
-                </span>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                value={inputByIdx[idx] ?? ''}
-                onChange={e => setInputByIdx(prev => ({ ...prev, [idx]: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValue(idx) } }}
-                className="flex-1 border border-orange-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                placeholder="เพิ่มค่า (แยกหลายค่าด้วย , แล้วกด Enter)"
-              />
-              <button type="button" onClick={() => addValue(idx)}
-                className="h-9 px-3 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700">
-                เพิ่มค่า
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Preview />
-    </div>
-  )
-}

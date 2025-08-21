@@ -7,6 +7,7 @@ const DB_NAME = process.env.DB_NAME || 'thai'
 const COLLECTION = 'sellers'
 
 export async function POST(req: NextRequest) {
+  let client: MongoClient | null = null
   try {
     const body = await req.json()
     const { username, password } = body
@@ -14,26 +15,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' }, { status: 400 })
     }
 
-    const client = await MongoClient.connect(MONGO_URI)
+    client = await MongoClient.connect(MONGO_URI)
     const db = client.db(DB_NAME)
     const sellers = db.collection(COLLECTION)
 
     const seller = await sellers.findOne({ username })
     if (!seller) {
-      client.close()
       return NextResponse.json({ message: 'ไม่พบผู้ใช้' }, { status: 401 })
     }
 
     const match = await bcrypt.compare(password, seller.password)
-    client.close()
     if (!match) {
       return NextResponse.json({ message: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
     }
 
-    // ส่งข้อมูลผู้ขาย (ไม่รวมรหัสผ่าน)
+    // ส่งข้อมูลผู้ขาย (ไม่รวมรหัสผ่าน) และคืน token แบบเดโม
     const { password: _, ...safeSeller } = seller
-    return NextResponse.json({ ok: true, seller: safeSeller })
+    const token = Math.random().toString(36).slice(2) // demo token; replace with real JWT if needed
+    return NextResponse.json({ ok: true, seller: safeSeller, token })
   } catch (err) {
     return NextResponse.json({ message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' }, { status: 500 })
+  } finally {
+    try { if (client) await client.close() } catch {}
   }
 }

@@ -1,113 +1,132 @@
 import { NextResponse } from 'next/server'
-import { getDb } from '../../../lib/mongodb'
+import clientPromise from '@/lib/mongodb'
+import { ObjectId } from 'mongodb'
 
-// GET /api/seller-info?username=...
+export const dynamic = 'force-dynamic'
+
+type SellerInfo = {
+  username: string
+  fullName: string
+  email: string
+  phone: string
+  shopName: string
+  birthDate: string
+  province: string
+  address: string
+  image?: string
+  _id?: string
+}
+
+function serializeId<T extends Record<string, any>>(doc: T | null) {
+  if (!doc) return null
+  const { _id, ...rest } = doc as any
+  return _id ? { _id: String(_id), ...rest } : rest
+}
+
+/* GET /api/seller-info?username=... */
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url)
-    const username = url.searchParams.get('username')
-    const db = await getDb()
-    const coll = db.collection('sellers')
-    if (username) {
-      const seller = await coll.findOne({ username })
-      if (!seller) return NextResponse.json({ message: 'not found' }, { status: 404 })
-      return NextResponse.json(seller)
+    const { searchParams } = new URL(req.url)
+    const username = searchParams.get('username')
+    if (!username) {
+      return NextResponse.json({ error: 'username is required' }, { status: 400 })
     }
-    const all = await coll.find().toArray()
-    return NextResponse.json(all)
+
+  const client = await clientPromise
+  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+  // client is a MongoClient
+  const db = (client as any).db()
+    const seller = await db.collection('sellers').findOne({ username })
+
+    if (!seller) return NextResponse.json(null, { status: 404 })
+    return NextResponse.json(serializeId(seller))
   } catch (err) {
-    return NextResponse.json({ message: 'server error' }, { status: 500 })
+    console.error('GET /api/seller-info error', err)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
   }
 }
 
-// POST create new seller
+/* POST create seller (body must include username) */
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const username = body?.username || body?.user
-    if (!username || typeof username !== 'string') {
-      return NextResponse.json({ message: 'username is required' }, { status: 400 })
+    const body = (await req.json()) as SellerInfo
+    if (!body?.username) {
+      return NextResponse.json({ error: 'username is required' }, { status: 400 })
     }
-    const db = await getDb()
-    const coll = db.collection('sellers')
-    const existing = await coll.findOne({ username })
-    if (existing) return NextResponse.json({ message: 'seller already exists' }, { status: 409 })
-    const seller = {
-      username,
-      fullName: body.fullName || body.fullname || '',
-      email: body.email || '',
-      phone: body.phone || '',
-      shopName: body.shopName || '',
-      birthDate: body.birthDate || '',
-      province: body.province || '',
-      address: body.address || '',
-      createdAt: new Date()
+
+  const client = await clientPromise
+  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+  const db = (client as any).db()
+
+    // ensure unique username
+    await db.collection('sellers').createIndex({ username: 1 }, { unique: true })
+
+    const { _id, ...bodyWithoutId } = body
+    const seller = { ...bodyWithoutId, createdAt: new Date(), updatedAt: new Date() }
+    const result = await db.collection('sellers').insertOne(seller)
+    return NextResponse.json({ ...seller, _id: result.insertedId.toString() }, { status: 201 })
+  } catch (err: any) {
+    // duplicate key
+    if (err?.code === 11000) {
+      return NextResponse.json({ error: 'username already exists' }, { status: 409 })
     }
-    await coll.insertOne(seller)
-    return NextResponse.json(seller, { status: 201 })
-  } catch (err) {
-    return NextResponse.json({ message: 'server error' }, { status: 500 })
+    console.error('POST /api/seller-info error', err)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
   }
 }
 
-// PUT update seller (body must include username)
+/* PUT update seller (body must include username) */
 export async function PUT(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const username = body?.username
-    if (!username || typeof username !== 'string') {
-      return NextResponse.json({ message: 'username is required' }, { status: 400 })
+    const body = (await req.json()) as SellerInfo
+    if (!body?.username) {
+      return NextResponse.json({ error: 'username is required' }, { status: 400 })
     }
-    const db = await getDb()
-    const coll = db.collection('sellers')
-    const res = await coll.findOneAndUpdate(
-      { username },
-      { $set: body },
-      { returnDocument: 'after' }
-    )
-    if (!res.value) return NextResponse.json({ message: 'not found' }, { status: 404 })
-    return NextResponse.json(res.value)
+
+  const client = await clientPromise
+  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+  const db = (client as any).db()
+
+    const filter = { username: body.username }
+    const update = { $set: { ...body, updatedAt: new Date() } }
+    const opts = { upsert: true }
+    await db.collection('sellers').updateOne(filter, update, opts)
+
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    return NextResponse.json({ message: 'server error' }, { status: 500 })
+    console.error('PUT /api/seller-info error', err)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
   }
 }
 
-// DELETE remove seller (accept username in query or body)
+/* DELETE remove seller (accept username in query or body) */
 export async function DELETE(req: Request) {
   try {
     const url = new URL(req.url)
-    let username = url.searchParams.get('username')
-    if (!username) {
-      const body = await req.json().catch(() => ({}))
-      username = body?.username
+    const fromQuery = url.searchParams.get('username')
+    let fromBody: string | undefined
+    try {
+      const b = await req.json()
+      fromBody = b?.username
+    } catch {
+      // no body / not JSON — ignore
     }
-    if (!username) return NextResponse.json({ message: 'username is required' }, { status: 400 })
-    const db = await getDb()
-    const coll = db.collection('sellers')
-    const del = await coll.deleteOne({ username })
-    if (del.deletedCount === 0) return NextResponse.json({ message: 'not found' }, { status: 404 })
-    // cascade delete products for this seller
-    await db.collection('products').deleteMany({ username })
-    return NextResponse.json({ message: 'deleted' })
+    const username = fromQuery || fromBody
+    if (!username) {
+      return NextResponse.json({ error: 'username is required' }, { status: 400 })
+    }
+
+  const client = await clientPromise
+  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+  const db = (client as any).db()
+
+    await db.collection('sellers').deleteOne({ username })
+    // optionally delete related products
+    await db.collection('seller_products').deleteMany({ username })
+
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    return NextResponse.json({ message: 'server error' }, { status: 500 })
+    console.error('DELETE /api/seller-info error', err)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
   }
-}
-export async function DELETE(req: Request) {
-	try {
-		const url = new URL(req.url)
-		let username = url.searchParams.get('username')
-		if (!username) {
-			const body = await req.json().catch(() => ({}))
-			username = body?.username
-		}
-		if (!username) return NextResponse.json({ message: 'username is required' }, { status: 400 })
-		const db = await readDB()
-		if (!db[username]) return NextResponse.json({ message: 'not found' }, { status: 404 })
-		delete db[username]
-		await writeDB(db)
-		return NextResponse.json({ message: 'deleted' })
-	} catch (err) {
-		return NextResponse.json({ message: 'server error' }, { status: 500 })
-	}
 }

@@ -11,6 +11,7 @@ import Swal from 'sweetalert2'
 import { motion } from 'framer-motion'
 import {
   ShoppingCart, Search, Filter, X, Truck, Star, ChevronLeft, ChevronRight,
+  Heart, Share2, Eye, Zap, Gift, Crown
 } from 'lucide-react'
 
 /* ------------------------------- Types ------------------------------- */
@@ -39,25 +40,30 @@ const clamp = (n: number, min = 0, max = 5) => Math.max(min, Math.min(max, n))
 /* ------------------------------- Skeletons ------------------------------- */
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 animate-pulse aspect-[3/4] overflow-hidden">
-      <div className="bg-orange-50 h-2/3" />
-      <div className="p-3 space-y-2">
-        <div className="h-4 bg-orange-50 rounded" />
-        <div className="h-4 bg-orange-50 w-2/3 rounded" />
-        <div className="h-6 bg-orange-50 w-1/3 rounded" />
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 animate-pulse aspect-[3/4] overflow-hidden">
+      <div className="bg-gradient-to-br from-slate-100 to-slate-200 h-2/3" />
+      <div className="p-4 space-y-3">
+        <div className="h-4 bg-slate-200 rounded" />
+        <div className="h-4 bg-slate-200 w-2/3 rounded" />
+        <div className="h-6 bg-slate-200 w-1/2 rounded" />
       </div>
     </div>
   )
 }
+
 function EmptyMessage({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="text-center py-14 bg-white/60 rounded-2xl border border-orange-100">
-      <div className="mx-auto mb-3 w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
-        <Search className="w-6 h-6 text-orange-600" />
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-center py-16 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-200 shadow-sm"
+    >
+      <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-gradient-to-br from-orange-100 to-red-100 flex items-center justify-center">
+        <Search className="w-8 h-8 text-orange-600" />
       </div>
-      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-      {subtitle && <p className="text-gray-500 mt-1">{subtitle}</p>}
-    </div>
+      <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
+      {subtitle && <p className="text-slate-500 text-sm max-w-md mx-auto">{subtitle}</p>}
+    </motion.div>
   )
 }
 
@@ -73,14 +79,17 @@ function CategoryMenu({
 }) {
   const scrollerId = 'cat-scroll'
   return (
-    <div className="relative max-w-6xl mx-auto px-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-semibold text-orange-900">เลือกหมวดหมู่</h2>
+    <div className="relative max-w-7xl mx-auto px-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <div className="w-1 h-6 bg-gradient-to-b from-orange-500 to-red-500 rounded-full"></div>
+          หมวดหมู่สินค้า
+        </h2>
         {selected && (
           <button
             type="button"
             onClick={() => onSelect?.(undefined)}
-            className="text-sm text-orange-700 hover:text-orange-900 flex items-center gap-1"
+            className="text-sm text-orange-600 hover:text-orange-700 flex items-center gap-1 px-3 py-1 rounded-full bg-orange-50 hover:bg-orange-100 transition-colors"
             aria-label="ล้างตัวกรองหมวดหมู่"
           >
             <X className="w-4 h-4" /> ล้างตัวกรอง
@@ -92,37 +101,43 @@ function CategoryMenu({
         <button
           type="button"
           aria-label="เลื่อนซ้าย"
-          className="absolute -left-2 top-1/2 -translate-y-1/2 z-10 hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-orange-200 shadow hover:bg-orange-50"
-          onClick={() => document.getElementById(scrollerId)?.scrollBy({ left: -240, behavior: 'smooth' })}
+          className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 hidden lg:flex items-center justify-center w-10 h-10 rounded-full bg-white border border-slate-200 shadow-lg hover:bg-slate-50 hover:shadow-xl transition-all"
+          onClick={() => document.getElementById(scrollerId)?.scrollBy({ left: -300, behavior: 'smooth' })}
         >
-          <ChevronLeft className="w-4 h-4 text-orange-700" />
+          <ChevronLeft className="w-5 h-5 text-slate-600" />
         </button>
 
-        <div id={scrollerId} className="flex gap-3 overflow-x-auto no-scrollbar py-2 pr-2">
-          {categories.map((cat) => {
+        <div id={scrollerId} className="flex gap-4 overflow-x-auto no-scrollbar py-3 px-2">
+          {categories.map((cat, index) => {
             const active = selected === cat.name
             return (
-              <button
+              <motion.button
                 key={cat.name}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
                 className={
-                  'group flex items-center gap-3 pr-4 pl-2 h-12 rounded-full border transition ' +
+                  'group flex flex-col items-center gap-2 p-4 min-w-[100px] rounded-2xl border-2 transition-all duration-300 ' +
                   (active
-                    ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                    : 'bg-white text-orange-800 border-orange-200 hover:bg-orange-50')
+                    ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white border-orange-500 shadow-lg scale-105'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-orange-300 hover:shadow-md hover:scale-105')
                 }
                 onClick={() => onSelect?.(active ? undefined : cat.name)}
                 type="button"
               >
-                <span className="w-8 h-8 rounded-full bg-white/90 border border-orange-200 flex items-center justify-center overflow-hidden">
+                <div className={
+                  'w-12 h-12 rounded-xl flex items-center justify-center transition-all ' +
+                  (active ? 'bg-white/20' : 'bg-gradient-to-br from-orange-50 to-red-50')
+                }>
                   {cat.icon ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cat.icon} alt={cat.name} className="w-5 h-5 object-contain" />
+                    <img src={cat.icon} alt={cat.name} className="w-7 h-7 object-contain" />
                   ) : (
-                    <span className="text-lg">🗂️</span>
+                    <span className="text-2xl">🗂️</span>
                   )}
-                </span>
-                <span className="text-sm font-medium whitespace-nowrap">{cat.name}</span>
-              </button>
+                </div>
+                <span className="text-xs font-semibold text-center leading-tight">{cat.name}</span>
+              </motion.button>
             )
           })}
         </div>
@@ -130,10 +145,10 @@ function CategoryMenu({
         <button
           type="button"
           aria-label="เลื่อนขวา"
-          className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-orange-200 shadow hover:bg-orange-50"
-          onClick={() => document.getElementById(scrollerId)?.scrollBy({ left: 240, behavior: 'smooth' })}
+          className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 hidden lg:flex items-center justify-center w-10 h-10 rounded-full bg-white border border-slate-200 shadow-lg hover:bg-slate-50 hover:shadow-xl transition-all"
+          onClick={() => document.getElementById(scrollerId)?.scrollBy({ left: 300, behavior: 'smooth' })}
         >
-          <ChevronRight className="w-4 h-4 text-orange-700" />
+          <ChevronRight className="w-5 h-5 text-slate-600" />
         </button>
       </div>
     </div>
@@ -152,18 +167,21 @@ function ProductCard({
   onAddToCart: (product: Product) => void
   onClick: () => void
 }) {
-  const discountPercent = 15
+  const discountPercent = Math.floor(Math.random() * 30) + 10
+  const originalPrice = Math.floor(product.price * (1 + discountPercent / 100))
   const soldCount = product.sold ?? Math.floor(Math.random() * 600) + 20
   const isFreeShipping = product.freeShipping ?? true
   const rating = clamp(product.rating ?? 4 + Math.random())
+  const [isLiked, setIsLiked] = useState(false)
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="group bg-white rounded-2xl shadow-sm border border-orange-100 hover:shadow-lg transition-all cursor-pointer overflow-hidden relative"
+      whileHover={{ y: -5, scale: 1.02 }}
+      transition={{ duration: 0.3 }}
+      className="group bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-xl transition-all cursor-pointer overflow-hidden relative"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -172,43 +190,77 @@ function ProductCard({
       }}
     >
       {/* Image */}
-      <div className="relative aspect-[4/5] bg-white">
+      <div className="relative aspect-square bg-gradient-to-br from-slate-50 to-slate-100 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={
             Array.isArray(product.images) && product.images.length
               ? product.images[0]
-              : product.image || 'https://via.placeholder.com/600x600?text=No+Image'
+              : product.image || 'https://via.placeholder.com/400x400?text=No+Image'
           }
           alt={product.name}
           loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           onError={(e) => {
-            ;(e.target as HTMLImageElement).src = 'https://via.placeholder.com/600x600?text=No+Image'
+            ;(e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400?text=No+Image'
           }}
         />
 
-        {/* Discount badge */}
-        <div className="absolute top-2 left-2">
-          <span className="inline-flex items-center px-2 py-1 text-[11px] font-semibold rounded-full bg-orange-600 text-white shadow">
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+        {/* Top badges */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-bold rounded-md bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg">
             -{discountPercent}%
           </span>
+          {soldCount > 500 && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-gradient-to-r from-yellow-400 to-yellow-500 text-yellow-900 shadow">
+              <Crown className="w-3 h-3" /> ขายดี
+            </span>
+          )}
         </div>
 
         {/* Free shipping */}
         {isFreeShipping && (
           <div className="absolute top-2 right-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-full bg-green-100 text-green-700 border border-green-200">
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-gradient-to-r from-green-400 to-emerald-500 text-white shadow-lg">
               <Truck className="w-3 h-3" /> ส่งฟรี
             </span>
           </div>
         )}
 
-        {/* Quick actions */}
-        <div className="absolute inset-x-2 bottom-2 flex gap-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition">
+        {/* Wishlist button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsLiked(!isLiked)
+          }}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0"
+          style={{ right: isFreeShipping ? '90px' : '8px' }}
+        >
+          <div className="w-8 h-8 rounded-full bg-white/90 backdrop-blur flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all">
+            <Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500 text-red-500' : 'text-slate-600'}`} />
+          </div>
+        </button>
+
+        {/* Quick view */}
+        <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
           <button
             type="button"
-            className="flex-1 h-10 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow hover:bg-orange-700 flex items-center justify-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+            className="w-8 h-8 rounded-full bg-white/90 backdrop-blur flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
+          >
+            <Eye className="w-4 h-4 text-slate-600" />
+          </button>
+        </div>
+
+        {/* Add to cart overlay */}
+        <div className="absolute inset-x-3 bottom-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+          <button
+            type="button"
+            className="w-full h-10 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-bold shadow-lg hover:shadow-xl flex items-center justify-center gap-2 hover:from-orange-600 hover:to-red-600 transition-all"
             onClick={(e) => {
               e.stopPropagation()
               onAddToCart(product)
@@ -221,27 +273,52 @@ function ProductCard({
       </div>
 
       {/* Info */}
-      <div className="p-3">
-        <div className="text-sm text-gray-900 line-clamp-2 min-h-[2.6em]">{product.name}</div>
-        <div className="mt-2 flex items-center justify-between">
-          <div className="text-xl text-orange-700 font-bold flex items-center">
-            <span className="text-base mr-0.5">฿</span>
-            {formatTHB(product.price)}
+      <div className="p-4">
+        <div className="text-sm text-slate-800 line-clamp-2 min-h-[2.5em] font-medium leading-relaxed">{product.name}</div>
+        
+        {/* Rating and sold */}
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1">
+            <div className="flex">
+              {[...Array(5)].map((_, i) => (
+                <Star 
+                  key={i} 
+                  className={`w-3 h-3 ${i < Math.floor(rating) ? 'fill-yellow-400 text-yellow-400' : 'text-slate-300'}`} 
+                />
+              ))}
+            </div>
+            <span className="text-slate-600 font-medium">{rating.toFixed(1)}</span>
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-gray-500">
-            <Star className="w-3.5 h-3.5 fill-yellow-400 stroke-yellow-400" />
-            <span>{rating.toFixed(1)}</span>
-            <span className="text-gray-300">•</span>
-            <span>ขายแล้ว {formatTHB(soldCount)}</span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-500">ขายแล้ว {formatTHB(soldCount)}</span>
+        </div>
+
+        {/* Price */}
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 line-through">฿{formatTHB(originalPrice)}</span>
+              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">-{discountPercent}%</span>
+            </div>
+            <div className="text-lg font-bold text-orange-600 flex items-center">
+              <span className="text-sm mr-0.5">฿</span>
+              {formatTHB(product.price)}
+            </div>
           </div>
+          {soldCount > 1000 && (
+            <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              <Zap className="w-3 h-3" />
+              <span className="font-semibold">Hot</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* In cart ribbon */}
+      {/* In cart indicator */}
       {inCart && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2">
-          <span className="px-2 py-1 bg-white/90 border border-orange-200 text-orange-700 text-[11px] font-semibold rounded-full shadow-sm">
-            อยู่ในตะกร้าแล้ว
+        <div className="absolute top-3 left-1/2 -translate-x-1/2">
+          <span className="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-full shadow-lg animate-pulse">
+            ✓ อยู่ในตะกร้า
           </span>
         </div>
       )}
@@ -398,24 +475,27 @@ function ProductPageInner() {
   }, [products, selectedCategory, search, sortBy])
 
   return (
-    <div
-      className="min-h-screen overflow-x-hidden"
-      style={{
-        background:
-          'radial-gradient(1200px 600px at 20% -10%, rgba(255,237,213,0.6) 0%, rgba(255,255,255,0) 60%), radial-gradient(900px 500px at 90% -20%, rgba(254,215,170,0.45) 0%, rgba(255,255,255,0) 55%), #fff',
-      }}
-    >
-      {/* Sticky header */}
-      <div className="sticky top-0 z-40 backdrop-blur bg-white/70 border-b border-orange-100">
+    <div className="min-h-screen bg-white">
+      {/* Enhanced sticky header */}
+      <div className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 border-b border-slate-200 shadow-sm">
         <Header user={username} />
-        <div className="max-w-6xl mx-auto px-4 py-2 flex justify-end">
-          <Link href="/orders" className="text-orange-700 hover:underline font-semibold">
-            ดูคำสั่งซื้อของคุณ
-          </Link>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <Link href="/seller" className="text-orange-600 hover:text-orange-700 font-semibold text-sm flex items-center gap-1 hover:underline">
+              <Gift className="w-4 h-4" /> ขายสินค้า
+            </Link>
+            <span className="text-slate-300">|</span>
+            <Link href="/orders" className="text-slate-600 hover:text-orange-600 font-medium text-sm hover:underline">
+              ติดตามคำสั่งซื้อ
+            </Link>
+          </div>
+          <div className="text-sm text-slate-500">
+            สินค้า {formatTHB(products.length)} รายการ
+          </div>
         </div>
       </div>
 
-      {/* Banners — แสดงเฉพาะที่ไม่ใช่ small */}
+      {/* Enhanced banners */}
       <div className="relative">
         {bannerImages?.length > 0 ? (
           <Banner images={bannerImages.filter((b) => !b.isSmall)} />
@@ -424,79 +504,67 @@ function ProductPageInner() {
         )}
       </div>
 
-      {/* Toolbar */}
-      <section className="max-w-6xl mx-auto mt-6 px-4">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-stretch">
-          <div className="md:col-span-7">
-            <div className="flex items-center gap-2 bg-white border border-orange-200 rounded-2xl px-3 h-12 shadow-sm focus-within:ring-2 focus-within:ring-orange-300">
-              <Search className="w-5 h-5 text-orange-700" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="ค้นหาสินค้า ตัวอย่าง: หูฟัง, หม้อทอดไร้น้ำมัน"
-                className="flex-1 bg-transparent outline-none text-sm placeholder:text-gray-400"
-                aria-label="ค้นหาสินค้า"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  aria-label="ล้างคำค้นหา"
-                  className="p-1 rounded-full hover:bg-orange-50"
-                >
-                  <X className="w-4 h-4 text-gray-500" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="md:col-span-5">
-            <div className="flex items-center gap-2 h-12">
-              <div className="flex-1 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSortBy('popular')}
-                  className={
-                    'h-12 rounded-2xl border shadow-sm flex items-center justify-center gap-2 text-sm ' +
-                    (sortBy === 'popular'
-                      ? 'bg-orange-600 text-white border-orange-600'
-                      : 'bg-white text-orange-900 border-orange-200 hover:bg-orange-50')
-                  }
-                >
-                  <Filter className="w-4 h-4" />
-                  ยอดนิยม
-                </button>
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortKey)}
-                    className="w-full h-12 appearance-none rounded-2xl border border-orange-200 bg-white pl-3 pr-8 text-black text-sm shadow-sm hover:bg-orange-50"
-                    aria-label="เรียงลำดับราคา"
-                  >
-                    <option value="popular">จัดเรียง: แนะนำ</option>
-                    <option value="price_asc">ราคาต่ำ → สูง</option>
-                    <option value="price_desc">ราคาสูง → ต่ำ</option>
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-orange-700">▾</span>
+      {/* Enhanced search and filters */}
+      <section className="max-w-7xl mx-auto mt-8 px-4">
+        <div className="bg-slate-50 rounded-2xl shadow-lg border border-slate-200 p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+            {/* Search */}
+            <div className="lg:col-span-8">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-slate-400" />
                 </div>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="ค้นหาสินค้า แบรนด์ และร้านค้า"
+                  className="w-full h-12 pl-12 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  aria-label="ค้นหาสินค้า"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center"
+                  >
+                    <X className="h-4 w-4 text-slate-400 hover:text-slate-600" />
+                  </button>
+                )}
               </div>
+            </div>
+
+            {/* Sort and Cart */}
+            <div className="lg:col-span-4 flex gap-3">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                className="flex-1 h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="popular">เรียงตาม: ความนิยม</option>
+                <option value="price_asc">ราคา: น้อย → มาก</option>
+                <option value="price_desc">ราคา: มาก → น้อย</option>
+              </select>
+              
               <Link
                 href="/checkout"
-                className="inline-flex items-center gap-2 h-12 px-4 rounded-2xl bg-orange-100 text-orange-800 font-semibold shadow hover:bg-orange-200 border border-orange-200"
+                className="inline-flex items-center gap-2 h-12 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold shadow-lg hover:shadow-xl hover:from-orange-600 hover:to-red-600 transition-all"
               >
-                <ShoppingCart className="w-5 h-5" /> ตะกร้า ({cart.length})
+                <ShoppingCart className="w-5 h-5" />
+                <span className="hidden sm:inline">ตะกร้า</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">{cart.length}</span>
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Categories */}
-      <div className="mt-6">
+      {/* Enhanced categories */}
+      <div className="mt-8">
         {loadingCats ? (
-          <div className="max-w-6xl mx-auto px-4">
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-4">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-12 rounded-full bg-white border border-orange-100 animate-pulse" />
+                <div key={i} className="h-20 rounded-2xl bg-white border border-slate-200 animate-pulse" />
               ))}
             </div>
           </div>
@@ -505,63 +573,85 @@ function ProductPageInner() {
         )}
       </div>
 
-      {/* Welcome */}
-      {username && (
-        <div className="max-w-6xl mx-auto px-4 mt-3 text-right text-black">
-          ยินดีต้อนรับ, <span className="font-bold">{username}</span>
-        </div>
-      )}
-
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {/* All Products */}
-        <section className="mb-8">
-          <div className="flex items-end justify-between mb-4">
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-orange-900">สินค้าทั้งหมด</h1>
-            {selectedCategory && (
-              <div className="text-sm text-gray-600">
-                หมวดหมู่: <span className="font-semibold text-orange-800">{selectedCategory}</span>
-              </div>
-            )}
+      {/* Enhanced main content */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-8 bg-gradient-to-b from-orange-500 to-red-500 rounded-full"></div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-800">สินค้าแนะนำ</h1>
+              {selectedCategory && (
+                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-semibold">
+                  {selectedCategory}
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-slate-500">
+              {filtered.length > 0 && `${formatTHB(filtered.length)} รายการ`}
+            </div>
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
-              {Array.from({ length: 8 }).map((_, i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {Array.from({ length: 10 }).map((_, i) => (
                 <SkeletonCard key={i} />
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyMessage title="ไม่พบสินค้า" subtitle="ลองค้นหาด้วยคำอื่น หรือเปลี่ยนตัวกรองดูนะ" />
+            <EmptyMessage 
+              title="ไม่พบสินค้าที่ต้องการ" 
+              subtitle="ลองเปลี่ยนคำค้นหาหรือดูหมวดหมู่อื่น ๆ" 
+            />
           ) : (
-            <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
-              {filtered.map((product) => (
-                <ProductCard
+            <motion.div 
+              layout 
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+            >
+              {filtered.map((product, index) => (
+                <motion.div
                   key={product._id}
-                  product={product}
-                  inCart={!!cart.find((p) => p._id === product._id)}
-                  onAddToCart={addToCart}
-                  onClick={() => router.push(`/product/${product._id}`)}
-                />
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <ProductCard
+                    product={product}
+                    inCart={!!cart.find((p) => p._id === product._id)}
+                    onAddToCart={addToCart}
+                    onClick={() => router.push(`/product/${product._id}`)}
+                  />
+                </motion.div>
               ))}
             </motion.div>
           )}
         </section>
 
-        {/* You May Also Like */}
+        {/* Enhanced recommendations */}
         {products.length > 10 && (
-          <ProductRecommendations products={products.slice(8, 16)} title="คุณอาจชอบ" />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+          >
+            <ProductRecommendations products={products.slice(8, 16)} title="สินค้าที่คุณอาจสนใจ" />
+          </motion.div>
         )}
       </main>
 
-      {/* Floating Cart CTA (mobile) */}
+      {/* Enhanced floating cart */}
       <Link
         href="/checkout"
-        className="fixed md:hidden bottom-4 right-4 inline-flex items-center gap-2 px-4 h-12 rounded-full bg-orange-600 text-white font-semibold shadow-lg"
+        className="fixed md:hidden bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-2xl flex items-center justify-center hover:scale-110 transition-transform z-40"
         aria-label="ไปที่ตะกร้าสินค้า"
       >
-        <ShoppingCart className="w-5 h-5" /> {cart.length}
+        <ShoppingCart className="w-6 h-6" />
+        {cart.length > 0 && (
+          <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+            {cart.length > 99 ? '99+' : cart.length}
+          </span>
+        )}
       </Link>
     </div>
   )
 }
+        

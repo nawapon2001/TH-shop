@@ -54,10 +54,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ message: 'id ไม่ถูกต้อง' }, { status: 400 })
     }
 
-    const product = await Product.findById(id).lean()
-    if (!product) return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
+  const product = (await Product.findById(id).lean()) as any
+  if (!product) return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
 
-    return NextResponse.json({ ...product, options: normalizeOptions(product.options) })
+  return NextResponse.json({ ...product, options: normalizeOptions(product.options) })
   } catch (error) {
     console.error('GET product error:', error)
     return NextResponse.json({ message: 'เกิดข้อผิดพลาด' }, { status: 500 })

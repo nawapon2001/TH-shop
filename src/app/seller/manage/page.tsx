@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Swal from 'sweetalert2'
-import { Store, User, Edit, Trash2, Loader2 } from 'lucide-react'
+import { Store, User, Edit, Trash2, Loader2, Upload, X, Image } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 // ---------- Types ----------
@@ -15,6 +15,7 @@ type SellerInfo = {
   birthDate: string
   province: string
   address: string
+  image?: string
 }
 
 type Product = {
@@ -32,6 +33,11 @@ export default function SellerManagePage() {
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<SellerInfo | null>(null)
+
+  // Image upload states
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string>('')
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   // Products management
   const [products, setProducts] = useState<Product[]>([])
@@ -169,24 +175,57 @@ export default function SellerManagePage() {
     setForm({ ...form, [name]: value })
   }
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setImageFile(file)
+      const previewUrl = URL.createObjectURL(file)
+      setImagePreview(previewUrl)
+    }
+  }
+
+  const removeImage = () => {
+    setImageFile(null)
+    setImagePreview('')
+    if (form) setForm({ ...form, image: '' })
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form) return
     setLoading(true)
     try {
+      // Upload image if selected
+      let imageUrl = form.image
+      if (imageFile) {
+        setUploadingImage(true)
+        const fd = new FormData()
+        fd.append('file', imageFile)
+        const up = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (up.ok) {
+          const upj = await up.json().catch(()=>({}))
+          imageUrl = Array.isArray(upj?.urls) && upj.urls[0] ? upj.urls[0] : imageUrl
+        }
+        setUploadingImage(false)
+      }
+
+      const updateData = { ...form, image: imageUrl }
       const res = await fetch('/api/seller-info', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(updateData),
       })
       if (!res.ok) throw new Error('update failed')
-      setSellerInfo(form)
+      setSellerInfo(updateData)
+      setImageFile(null)
+      setImagePreview('')
       setEditMode(false)
       Swal.fire({ icon: 'success', title: 'บันทึกข้อมูลสำเร็จ', timer: 1200, showConfirmButton: false })
     } catch {
       Swal.fire({ icon: 'error', title: 'บันทึกข้อมูลไม่สำเร็จ' })
     } finally {
       setLoading(false)
+      setUploadingImage(false)
     }
   }
 
@@ -252,135 +291,193 @@ export default function SellerManagePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 py-10">
-      <div className="max-w-xl mx-auto bg-white rounded-2xl border border-orange-200 shadow-xl p-8">
-        <div className="flex items-center gap-3 mb-6 justify-between">
-          <div className="flex items-center gap-3">
-            <Store className="w-8 h-8 text-orange-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-orange-700">จัดการร้านค้าของคุณ</h1>
-              <div className="text-sm text-slate-500">ล็อกอินเป็น: <span className="font-medium text-orange-700">{sellerUser}</span></div>
-            </div>
-          </div>
-          <button onClick={() => router.push('/seller/products/create')} className="px-3 py-2 rounded-full bg-green-600 text-white text-sm">+ เพิ่มสินค้า</button>
-        </div>
-
-        {editMode ? (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อร้านค้า</label>
-              <input name="shopName" value={form?.shopName || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อ-นามสกุล</label>
-              <input name="fullName" value={form?.fullName || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">อีเมล</label>
-              <input name="email" type="email" value={form?.email || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">เบอร์โทร</label>
-              <input name="phone" value={form?.phone || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">วันเกิด</label>
-              <input name="birthDate" type="date" value={form?.birthDate || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">จังหวัด</label>
-              <input name="province" value={form?.province || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">ที่อยู่</label>
-              <textarea name="address" value={form?.address || ''} onChange={handleChange} className="w-full p-3 border rounded-lg" rows={2} required />
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button type="submit" className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2">
-                <Edit className="w-4 h-4" /> บันทึก
-              </button>
-              <button type="button" className="px-6 py-2 rounded-full bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300" onClick={handleCancel}>
-                ยกเลิก
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-orange-500" />
-              <span className="font-semibold">{sellerInfo.fullName}</span>
-            </div>
-            <div>ชื่อร้านค้า: <span className="font-semibold">{sellerInfo.shopName}</span></div>
-            <div>อีเมล: <span className="font-semibold">{sellerInfo.email}</span></div>
-            <div>เบอร์โทร: <span className="font-semibold">{sellerInfo.phone}</span></div>
-            <div>วันเกิด: <span className="font-semibold">{sellerInfo.birthDate}</span></div>
-            <div>จังหวัด: <span className="font-semibold">{sellerInfo.province}</span></div>
-            <div>ที่อยู่: <span className="font-semibold">{sellerInfo.address}</span></div>
-
-            {/* Products list and new-product template */}
-            <div className="mb-6">
-              <div className="mb-4 p-4 border rounded bg-orange-50">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-semibold text-orange-800">เทมเพลตเพิ่มสินค้า</div>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreate(s => !s)}
-                    className="text-sm text-orange-600"
-                  >
-                    {showCreate ? 'ซ่อน' : 'เปิดฟอร์ม'}
-                  </button>
-                </div>
-                {showCreate && (
-                  <form onSubmit={handleCreateProduct} className="grid gap-2">
-                    <input name="name" value={newProduct.name} onChange={handleNewChange} placeholder="ชื่อสินค้า" className="p-2 border rounded" />
-                    <input name="price" value={newProduct.price} onChange={handleNewChange} placeholder="ราคา (ตัวอย่าง: 990)" className="p-2 border rounded" />
-                    <textarea name="desc" value={newProduct.desc} onChange={handleNewChange} placeholder="คำอธิบายสั้นๆ" className="p-2 border rounded" rows={2} />
-                    <input name="image" value={newProduct.image} onChange={handleNewChange} placeholder="URL รูปภาพ (หรือเว้นว่าง)" className="p-2 border rounded" />
-                    <div className="flex gap-2">
-                      <button disabled={creating} type="submit" className="px-4 py-2 rounded bg-orange-600 text-white">
-                        {creating ? 'กำลังบันทึก...' : 'สร้างสินค้า'}
-                      </button>
-                      <button type="button" onClick={() => setNewProduct({ name: '', price: '', desc: '', image: '' })} className="px-4 py-2 rounded border">
-                        ยกเลิก
-                      </button>
-                    </div>
-                  </form>
-                )}
+      <div className="max-w-4xl mx-auto bg-white rounded-3xl border border-orange-200 shadow-xl overflow-hidden">
+        {/* Enhanced Header with gradient */}
+        <div className="bg-gradient-to-r from-orange-500 to-amber-400 p-6 text-white">
+          <div className="flex items-center gap-3 mb-6 justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                <Store className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">จัดการร้านค้าของคุณ</h1>
+                <div className="text-orange-100">ล็อกอินเป็น: <span className="font-medium text-white">{sellerUser}</span></div>
               </div>
             </div>
+            <button onClick={() => router.push('/seller/products/create')} className="px-4 py-2 rounded-xl bg-white text-orange-600 font-semibold hover:bg-orange-50 transition-all">+ เพิ่มสินค้า</button>
+          </div>
+        </div>
 
-            <div className="mt-6">
-              <h2 className="font-semibold text-orange-800 mb-2">สินค้าของฉัน</h2>
-              {products.length === 0 ? (
-                <div className="text-sm text-slate-500">ยังไม่มีสินค้า — ใช้เทมเพลตด้านบนเพื่อเพิ่มสินค้าได้ทันที</div>
-              ) : (
-                <div className="space-y-3">
-                  {products.map((p) => (
-                    <div key={p._id} className="flex items-center justify-between gap-3 p-3 border rounded">
-                      <div>
-                        <div className="font-medium">{p.name}</div>
-                        <div className="text-xs text-slate-500">฿{Number(p.price).toLocaleString('th-TH')}</div>
+        <div className="p-8">
+          {editMode ? (
+            <form onSubmit={handleSave} className="space-y-6">
+              {/* Enhanced Image Upload Section */}
+              <div className="grid lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-1">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">รูปโปรไฟล์ร้าน</label>
+                  <div className="relative">
+                    <div className="w-full aspect-square rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50/50 overflow-hidden">
+                      {(imagePreview || form?.image) ? (
+                        <div className="relative w-full h-full">
+                          <img 
+                            src={imagePreview || form?.image || ''} 
+                            alt="Shop profile" 
+                            className="w-full h-full object-cover" 
+                          />
+                          <button
+                            type="button"
+                            onClick={removeImage}
+                            className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-orange-100/50 transition">
+                          <Upload className="w-8 h-8 text-orange-400 mb-2" />
+                          <span className="text-orange-700 font-medium text-sm">อัปโหลดรูป</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                    {uploadingImage && (
+                      <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-2xl">
+                        <div className="text-center">
+                          <div className="w-6 h-6 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
+                          <span className="text-xs text-orange-700">อัปโหลด...</span>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <a href={`/seller/products/edit?id=${encodeURIComponent(p._id)}`} className="px-3 py-1 rounded bg-white border text-sm">แก้ไข</a>
-                        <button onClick={() => handleDeleteProduct(p._id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm">ลบ</button>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="lg:col-span-3 space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อร้านค้า</label>
+                      <input name="shopName" value={form?.shopName || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อ-นามสกุล</label>
+                      <input name="fullName" value={form?.fullName || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">อีเมล</label>
+                      <input name="email" type="email" value={form?.email || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">เบอร์โทร</label>
+                      <input name="phone" value={form?.phone || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">วันเกิด</label>
+                      <input name="birthDate" type="date" value={form?.birthDate || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">จังหวัด</label>
+                      <input name="province" value={form?.province || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" required />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">ที่อยู่</label>
+                    <textarea name="address" value={form?.address || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none resize-none" rows={2} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">URL รูปโปรไฟล์ (ทางเลือก)</label>
+                    <input name="image" value={form?.image || ''} onChange={handleChange} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none" placeholder="https://..." />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-6 border-t border-orange-100">
+                <button type="submit" className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2">
+                  <Edit className="w-4 h-4" /> บันทึก
+                </button>
+                <button type="button" className="px-6 py-2 rounded-full bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300" onClick={handleCancel}>
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-6">
+              {/* Enhanced Shop Info Card */}
+              <div className="grid lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-1">
+                  {sellerInfo?.image ? (
+                    <div className="w-full aspect-square rounded-2xl overflow-hidden border border-orange-200 shadow-sm">
+                      <img src={sellerInfo.image} alt="shop" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-square rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50 flex items-center justify-center">
+                      <div className="text-center text-orange-400">
+                        <Image className="w-12 h-12 mx-auto mb-2" />
+                        <span className="text-sm">ไม่มีรูปโปรไฟล์</span>
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
+                
+                <div className="lg:col-span-3">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <User className="w-5 h-5 text-orange-500" />
+                      <span className="font-semibold">{sellerInfo.fullName}</span>
+                    </div>
+                    <div><span className="text-slate-600">ชื่อร้านค้า:</span> <span className="font-semibold text-orange-700">{sellerInfo.shopName}</span></div>
+                    <div><span className="text-slate-600">อีเมล:</span> <span className="font-semibold">{sellerInfo.email}</span></div>
+                    <div><span className="text-slate-600">เบอร์โทร:</span> <span className="font-semibold">{sellerInfo.phone}</span></div>
+                    <div><span className="text-slate-600">วันเกิด:</span> <span className="font-semibold">{sellerInfo.birthDate}</span></div>
+                    <div><span className="text-slate-600">จังหวัด:</span> <span className="font-semibold">{sellerInfo.province}</span></div>
+                  </div>
+                  <div className="mt-4">
+                    <span className="text-slate-600">ที่อยู่:</span> <span className="font-semibold">{sellerInfo.address}</span>
+                  </div>
+                </div>
+              </div>
 
-            <div className="flex gap-2 mt-6">
-              <button className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2" onClick={handleEdit}>
-                <Edit className="w-4 h-4" /> แก้ไขข้อมูล
-              </button>
-              <button className="px-6 py-2 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 flex items-center gap-2" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4" /> ลบร้านค้า
-              </button>
+              {/* Products list and new-product template */}
+              <div className="mb-6" />
+
+              <div className="mt-6">
+                <h2 className="font-semibold text-orange-800 mb-2">สินค้าของฉัน</h2>
+                {products.length === 0 ? (
+                  <div className="text-sm text-slate-500">ยังไม่มีสินค้า — ใช้เทมเพลตด้านบนเพื่อเพิ่มสินค้าได้ทันที</div>
+                ) : (
+                  <div className="space-y-3">
+                    {products.map((p) => (
+                      <div key={p._id} className="flex items-center justify-between gap-3 p-3 border rounded">
+                        <div>
+                          <div className="font-medium">{p.name}</div>
+                          <div className="text-xs text-slate-500">฿{Number(p.price).toLocaleString('th-TH')}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={`/seller/products/edit?id=${encodeURIComponent(p._id)}`} className="px-3 py-1 rounded bg-white border text-sm">แก้ไข</a>
+                          <button onClick={() => handleDeleteProduct(p._id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm">ลบ</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 mt-6">
+                <button className="px-6 py-2 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700 flex items-center gap-2" onClick={handleEdit}>
+                  <Edit className="w-4 h-4" /> แก้ไขข้อมูล
+                </button>
+                <button className="px-6 py-2 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 flex items-center gap-2" onClick={handleDelete}>
+                  <Trash2 className="w-4 h-4" /> ลบร้านค้า
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
 }
+                       

@@ -126,6 +126,19 @@ export default function SellerAuthPage() {
       // store username and optional token
       localStorage.setItem('sellerUser', payload.username)
       if (data?.token) localStorage.setItem('sellerToken', data.token)
+      // also persist the entered profile fields so create-shop page can prefill them
+      try {
+        const profile = {
+          username: payload.username,
+          fullName: payload.fullName || '',
+          phone: payload.phone || '',
+          shopName: payload.shopName || '',
+          email: payload.email || '',
+          province: payload.province || '',
+          address: payload.address || ''
+        }
+        localStorage.setItem('sellerProfile', JSON.stringify(profile))
+      } catch (e) { /* ignore */ }
       // reset
       setSellerUser(''); setSellerPass(''); setConfirmPass('')
       setFullName(''); setEmail(''); setPhone(''); setShopName('')

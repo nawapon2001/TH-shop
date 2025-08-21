@@ -1,56 +1,43 @@
+import mongoose from 'mongoose'
 import { MongoClient } from 'mongodb'
 
-// รองรับทั้ง MONGODB_URI / MONGODB_DB และ MONGO_URI / MONGO_DB
-const uri = process.env.MONGODB_URI || process.env.MONGO_URI || ''
-const dbName = process.env.MONGODB_DB || process.env.MONGO_DB || undefined
+// Read from either MONGO_URI or MONGODB_URI for compatibility
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || ''
 
-if (!uri) {
-  // ไม่โยน error เพื่อไม่ให้ dev server แตก แต่แจ้งเตือนใน log
-  // ตั้งค่า MONGODB_URI หรือ MONGO_URI ใน .env.local
-  console.warn('MongoDB URI not set (MONGODB_URI or MONGO_URI). Database calls will fail.')
-}
+let mongoosePromise: Promise<typeof mongoose> | null = null
+let clientPromise: Promise<MongoClient> | null = null
 
-declare global {
-  // allow global caching across module reloads in development
-  // eslint-disable-next-line no-var
-  var __mongoClientPromise: Promise<MongoClient> | undefined
-}
-
-let clientPromise: Promise<MongoClient>
-
-if (!global.__mongoClientPromise) {
-  const client = new MongoClient(uri, {
-    // เพิ่ม options ถ้าต้องการ
-    // useNewUrlParser: true, useUnifiedTopology: true  // not needed with modern driver types
-  })
-  global.__mongoClientPromise = client.connect()
-}
-
-clientPromise = global.__mongoClientPromise!
-
-export async function getDb() {
-  const client = await clientPromise
-  return dbName ? client.db(dbName) : client.db()
-}
+/**
+ * Ensure mongoose is connected. Many models in this repo use mongoose.
+ * Safe no-op if MONGO_URI is not provided (so local dev without DB won't crash).
+ */
+export async function connectToDatabase(): Promise<void> {
+  if (!MONGO_URI) {
+    // eslint-disable-next-line no-console
+    console.warn('connectToDatabase called but MONGO_URI is not set. Set MONGO_URI in .env.local to connect to MongoDB Atlas.')
+    return
   }
 
-  try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    throw e;
+  if (mongoose.connection && mongoose.connection.readyState === 1) return
+  if (!mongoosePromise) {
+    // keep default options minimal — adjust as needed for your Atlas cluster
+    mongoosePromise = mongoose.connect(MONGO_URI, {
+      // use the project's tsconfig / node version defaults; keep options minimal here
+      // autoIndex: false, // enable in development only if you want
+    })
   }
-
-  global.mongoose = cached;
-  return cached.conn;
+  await mongoosePromise
 }
 
-export async function disconnectFromDatabase() {
-  if (cached.conn) {
-    await mongoose.disconnect();
-    cached.conn = null;
-    cached.promise = null;
-    global.mongoose = undefined;
-    console.log('🔌 Disconnected from MongoDB Atlas');
+// Provide a MongoClient promise for code that imports the default export (clientPromise)
+if (MONGO_URI) {
+  if (!clientPromise) {
+    const client = new MongoClient(MONGO_URI)
+    clientPromise = client.connect()
   }
+} else {
+  // fallback to a resolved empty object to keep imports safe when no URI is set
+  clientPromise = Promise.resolve({} as any)
 }
+
+export default clientPromise

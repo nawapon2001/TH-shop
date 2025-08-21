@@ -7,25 +7,25 @@ type ProductOption = { name: string; values: string[] }
 const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
 function sanitizeOptions(raw: any): ProductOption[] {
   try {
-    const parsed: any = Array.isArray(raw) ? raw : JSON.parse(String(raw || '[]'))
-    const data: any[] = Array.isArray(parsed) ? parsed : []
+    const data = Array.isArray(raw) ? raw : JSON.parse(String(raw || '[]'))
+    if (!Array.isArray(data)) return []
     const seen = new Set<string>()
     const list = data
-      .map((o: any) => {
-        const name = ensureString(o?.name)
-        const valuesRaw = Array.isArray(o?.values) ? o.values : []
-        const values = Array.from(new Set(valuesRaw.map((v: any) => ensureString(v)).filter(Boolean)))
-        return { name, values }
-      })
-      .filter((o: any) => o.name && Array.isArray(o.values) && o.values.length > 0)
-      .map((o: any) => {
-        let name = o.name as string
+      .map((o: any) => ({
+        name: ensureString(o?.name),
+        values: Array.from(
+          new Set((Array.isArray(o?.values) ? o.values : []).map(ensureString).filter(Boolean))
+        ),
+      }))
+      .filter((o: ProductOption) => o.name && o.values.length > 0)
+      .map((o: ProductOption) => {
+        let name = o.name
         let n = 2
         while (seen.has(name)) name = `${o.name} (${n++})`
         seen.add(name)
-        return { name, values: o.values as string[] }
+        return { ...o, name }
       })
-    return list as ProductOption[]
+    return list
   } catch {
     return []
   }
