@@ -1,0 +1,8 @@
+node_modules
+.git
+.next/cache
+.env.local
+*.log
+signshop.tar.gz
+tsbuildinfo
+dist
