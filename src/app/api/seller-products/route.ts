@@ -17,14 +17,38 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const username = url.searchParams.get('username')
-    if (!username) return NextResponse.json([], { status: 200 })
+    const id = url.searchParams.get('id')
 
-  const client = await clientPromise
-  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
-  const db = (client as any).db()
-  const items = await db.collection('seller_products').find({ username }).toArray()
-  const res = items.map((i: any) => ({ ...i, _id: String(i._id) }))
-    return NextResponse.json(res)
+    const client = await clientPromise
+    if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+    const db = (client as any).db()
+
+    // GET by id
+    if (id) {
+      // allow both string ids and ObjectId
+      try {
+        const doc = await db.collection('seller_products').findOne({ _id: new ObjectId(id) })
+        if (!doc) return NextResponse.json(null, { status: 404 })
+        return NextResponse.json({ ...doc, _id: String(doc._id) })
+      } catch {
+        // fallback: try to find by string id field
+        const doc = await db.collection('seller_products').findOne({ _id: id })
+        if (!doc) return NextResponse.json(null, { status: 404 })
+        return NextResponse.json({ ...doc, _id: String((doc as any)._id) })
+      }
+    }
+
+    // GET by username
+    if (username) {
+      const items = await db.collection('seller_products').find({ username }).toArray()
+      const res = items.map((i: any) => ({ ...i, _id: String(i._id) }))
+      return NextResponse.json(res)
+    }
+
+    // no filters -> return all seller products
+    const all = await db.collection('seller_products').find({}).toArray()
+    const resAll = all.map((i: any) => ({ ...i, _id: String(i._id) }))
+    return NextResponse.json(resAll)
   } catch (err) {
     console.error('GET /api/seller-products error', err)
     return NextResponse.json({ error: 'internal error' }, { status: 500 })

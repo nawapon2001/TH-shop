@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
+import { CartManager } from '@/lib/cart-utils'
 import Banner from '@/components/Banner'
 import FullScreenBanner from '@/components/FullScreenBanner'
 import ProductRecommendations from '@/components/ProductRecommendations'
@@ -13,6 +14,7 @@ import {
   ShoppingCart, Search, Filter, X, Truck, Star, ChevronLeft, ChevronRight,
   Heart, Share2, Eye, Zap, Gift, Crown
 } from 'lucide-react'
+import { Store } from 'lucide-react'
 
 /* ------------------------------- Types ------------------------------- */
 type Product = {
@@ -24,6 +26,7 @@ type Product = {
   description?: string
   rating?: number
   sold?: number
+  discountPercent?: number
   freeShipping?: boolean
   category?: string
 }
@@ -167,11 +170,11 @@ function ProductCard({
   onAddToCart: (product: Product) => void
   onClick: () => void
 }) {
-  const discountPercent = Math.floor(Math.random() * 30) + 10
-  const originalPrice = Math.floor(product.price * (1 + discountPercent / 100))
-  const soldCount = product.sold ?? Math.floor(Math.random() * 600) + 20
+  const discountPercent = product.discountPercent || 0
+  const originalPrice = discountPercent ? Math.floor(product.price * (1 + discountPercent / 100)) : 0
+  const soldCount = product.sold ?? 0
   const isFreeShipping = product.freeShipping ?? true
-  const rating = clamp(product.rating ?? 4 + Math.random())
+  const rating = clamp(product.rating ?? 0)
   const [isLiked, setIsLiked] = useState(false)
 
   return (
@@ -211,9 +214,11 @@ function ProductCard({
 
         {/* Top badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
-          <span className="inline-flex items-center px-2 py-1 text-xs font-bold rounded-md bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg">
-            -{discountPercent}%
-          </span>
+          {discountPercent > 0 && (
+            <span className="inline-flex items-center px-2 py-1 text-xs font-bold rounded-md bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg">
+              -{discountPercent}%
+            </span>
+          )}
           {soldCount > 500 && (
             <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-gradient-to-r from-yellow-400 to-yellow-500 text-yellow-900 shadow">
               <Crown className="w-3 h-3" /> ขายดี
@@ -229,13 +234,44 @@ function ProductCard({
             </span>
           </div>
         )}
-
         {/* Wishlist button */}
         <button
           type="button"
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation()
-            setIsLiked(!isLiked)
+            const next = !isLiked
+            setIsLiked(next)
+            try {
+              let user = null
+              if (typeof window !== 'undefined') {
+                const raw = localStorage.getItem('user') || localStorage.getItem('sellerUser')
+                if (raw) {
+                  let uname = raw
+                  try {
+                    let cur = raw
+                    for (let i = 0; i < 5; i++) {
+                      try { const next = decodeURIComponent(cur); if (next === cur) break; cur = next } catch { break }
+                    }
+                    uname = cur
+                  } catch {}
+                  user = uname
+                }
+              }
+              if (!user) {
+                // nicer modal prompt
+                Swal.fire({ icon: 'info', title: 'กรุณาเข้าสู่ระบบ', text: 'กรุณาเข้าสู่ระบบเพื่อบันทึกรายการที่ชอบ', timer: 1800, showConfirmButton: false })
+                return
+              }
+              if (next) {
+                await fetch('/api/wishlist', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ user, item: (product as any) })
+                })
+              }
+            } catch (err) {
+              console.error('wishlist error', err)
+            }
           }}
           className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0"
           style={{ right: isFreeShipping ? '90px' : '8px' }}
@@ -297,8 +333,12 @@ function ProductCard({
         <div className="mt-3 flex items-center justify-between">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 line-through">฿{formatTHB(originalPrice)}</span>
-              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">-{discountPercent}%</span>
+              {discountPercent > 0 && (
+                <>
+                  <span className="text-xs text-slate-400 line-through">฿{formatTHB(originalPrice)}</span>
+                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">-{discountPercent}%</span>
+                </>
+              )}
             </div>
             <div className="text-lg font-bold text-orange-600 flex items-center">
               <span className="text-sm mr-0.5">฿</span>
@@ -341,6 +381,7 @@ function ProductPageInner() {
   const [bannerImages, setBannerImages] = useState<BannerItem[]>([])
   const [cart, setCart] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [sellers, setSellers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingCats, setLoadingCats] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>()
@@ -357,7 +398,31 @@ function ProductPageInner() {
       try {
         setLoading(true)
         const res = await fetch('/api/products')
-        setProducts(res.ok ? ((await res.json()) as Product[]) ?? [] : [])
+        const mainProducts: Product[] = res.ok ? ((await res.json()) as Product[]) ?? [] : []
+        // fetch seller products and merge
+        const spRes = await fetch('/api/seller-products')
+        const sellerProductsRaw = spRes.ok ? (await spRes.json()).filter?.(Boolean) ?? [] : []
+        const sellerProducts: Product[] = Array.isArray(sellerProductsRaw)
+          ? sellerProductsRaw.map((p: any) => ({
+              _id: `seller-${p._id}`,
+              name: p.name || p.title || 'สินค้าจากร้าน',
+              price: Number(p.price) || 0,
+              image: p.image || '',
+              images: p.images || [],
+              description: p.desc || '',
+              // provide defaults so ProductCard can render safely
+              rating: p.rating ?? 0,
+              sold: p.sold ?? 0,
+              discountPercent: p.discountPercent ?? 0,
+              freeShipping: p.freeShipping ?? false,
+              // seller metadata for UI
+              sellerUsername: p.username || p.seller || p.owner || null,
+              sellerShopName: p.shopName || p.shop || null,
+              sellerProductId: p._id || null,
+            }))
+          : []
+
+        setProducts([...sellerProducts, ...mainProducts])
       } catch {
         setProducts([])
       } finally {
@@ -424,28 +489,46 @@ function ProductPageInner() {
     fetchCategories()
   }, [])
 
-  /* Load & persist cart */
+  /* Fetch sellers for storefront listing */
   useEffect(() => {
-    const raw = localStorage.getItem('cart')
-    try {
-      setCart(raw ? (JSON.parse(raw) as Product[]) : [])
-    } catch {
-      setCart([])
+    const fetchSellers = async () => {
+      try {
+        const res = await fetch('/api/sellers')
+        if (!res.ok) return setSellers([])
+        const d = await res.json().catch(() => [])
+        setSellers(Array.isArray(d) ? d : [])
+      } catch {
+        setSellers([])
+      }
     }
+    fetchSellers()
   }, [])
+
+  /* Load cart via CartManager and keep in sync via storage events */
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(cart))
-  }, [cart])
+    const read = () => {
+      try {
+        const arr = CartManager.getCart()
+        setCart(Array.isArray(arr) ? arr : [])
+      } catch {
+        setCart([])
+      }
+    }
+    read()
+    const onStorage = (e: StorageEvent) => { if (e.key === 'cart_v2' || e.key === 'cart') read() }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const addToCart = (product: Product) => {
-    setCart((prev) => {
-      if (prev.find((p) => p._id === product._id)) {
-        Swal.fire({ icon: 'info', title: 'มีสินค้าในตะกร้าแล้ว', timer: 1200, showConfirmButton: false })
-        return prev
-      }
+    try {
+      CartManager.addProduct(product as any, 1)
       Swal.fire({ icon: 'success', title: 'เพิ่มสินค้าลงตะกร้าแล้ว', timer: 1200, showConfirmButton: false })
-      return [...prev, product]
-    })
+      setCart(CartManager.getCart())
+    } catch (err) {
+      console.error('addToCart error', err)
+      Swal.fire({ icon: 'error', title: 'ไม่สามารถเพิ่มสินค้าลงตะกร้าได้' })
+    }
   }
 
   /* Derived list */
@@ -481,7 +564,7 @@ function ProductPageInner() {
         <Header user={username} />
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/seller" className="text-orange-600 hover:text-orange-700 font-semibold text-sm flex items-center gap-1 hover:underline">
+            <Link href="/seller/manage" className="text-orange-600 hover:text-orange-700 font-semibold text-sm flex items-center gap-1 hover:underline">
               <Gift className="w-4 h-4" /> ขายสินค้า
             </Link>
             <span className="text-slate-300">|</span>
@@ -635,6 +718,36 @@ function ProductPageInner() {
           >
             <ProductRecommendations products={products.slice(8, 16)} title="สินค้าที่คุณอาจสนใจ" />
           </motion.div>
+        )}
+
+        {/* Sellers storefront */}
+        {sellers.length > 0 && (
+          <section className="mt-12 mb-24">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-orange-500 to-red-500 rounded-full" />
+                <h2 className="text-2xl font-bold text-slate-800">ร้านค้าแนะนำ</h2>
+                <p className="text-sm text-slate-500">เยี่ยมชมร้านค้าของผู้ขายในระบบ</p>
+              </div>
+              <div className="text-sm text-slate-500">{sellers.length} ร้าน</div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {sellers.map((s) => (
+                <Link key={s.username || s._id} href={`/seller/${encodeURIComponent(s.username || s._id)}`} className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-lg transition">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-orange-50 flex items-center justify-center border border-orange-100">
+                      {s.image ? <img src={s.image} alt={s.shopName} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500" />}
+                    </div>
+                    <div className="flex-1 text-sm">
+                      <div className="font-semibold text-slate-800">{s.shopName || s.username}</div>
+                      <div className="text-xs text-slate-500">{s.fullName || ''}</div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
       </main>
 

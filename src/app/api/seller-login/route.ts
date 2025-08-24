@@ -29,10 +29,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
     }
 
-    // ส่งข้อมูลผู้ขาย (ไม่รวมรหัสผ่าน) และคืน token แบบเดโม
-    const { password: _, ...safeSeller } = seller
-    const token = Math.random().toString(36).slice(2) // demo token; replace with real JWT if needed
-    return NextResponse.json({ ok: true, seller: safeSeller, token })
+  // ส่งข้อมูลผู้ขาย (ไม่รวมรหัสผ่าน) และคืน token แบบเดโม
+  const { password: _, ...safeSeller } = seller
+  const token = Math.random().toString(36).slice(2) // demo token; replace with real JWT if needed
+
+  // หากไม่มีข้อมูลหน้าร้าน/ชื่อร้าน ให้แจ้ง client ว่าต้องไปหน้าเปิดร้าน
+  const needsProfile = !(safeSeller.shopName || safeSeller.fullName)
+  return NextResponse.json({ ok: true, seller: safeSeller, token, needsProfile })
   } catch (err) {
     return NextResponse.json({ message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' }, { status: 500 })
   } finally {

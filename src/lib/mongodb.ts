@@ -5,7 +5,7 @@ import { MongoClient } from 'mongodb'
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || ''
 
 let mongoosePromise: Promise<typeof mongoose> | null = null
-let clientPromise: Promise<MongoClient> | null = null
+let clientPromise: Promise<MongoClient | null> | null = null
 
 /**
  * Ensure mongoose is connected. Many models in this repo use mongoose.
@@ -36,8 +36,8 @@ if (MONGO_URI) {
     clientPromise = client.connect()
   }
 } else {
-  // fallback to a resolved empty object to keep imports safe when no URI is set
-  clientPromise = Promise.resolve({} as any)
+  // fallback to null so callers can detect that the DB is not configured
+  clientPromise = Promise.resolve(null)
 }
 
 export default clientPromise

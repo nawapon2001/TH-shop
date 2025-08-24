@@ -1,7 +1,9 @@
 'use client'
 
 import React from 'react'
+import { CartManager } from '@/lib/cart-utils'
 import Link from 'next/link'
+import { isSellerLoggedIn } from '@/lib/seller-auth'
 import {
   ShoppingCart,
   User,
@@ -60,13 +62,11 @@ export default function Header({ user }: { user?: string | null }) {
     }
   }, [user])
 
-  // ---- Cart counter + listen to changes ----
+  // ---- Cart counter + listen to changes (use canonical CartManager) ----
   React.useEffect(() => {
     const readCart = () => {
       try {
-        const raw = localStorage.getItem('cart')
-        if (!raw) return setCartCount(0)
-        const arr = JSON.parse(raw)
+        const arr = CartManager.getCart()
         setCartCount(Array.isArray(arr) ? arr.length : 0)
       } catch {
         setCartCount(0)
@@ -74,7 +74,7 @@ export default function Header({ user }: { user?: string | null }) {
     }
     readCart()
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'cart') readCart()
+      if (e.key === 'cart_v2' || e.key === 'cart') readCart()
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
@@ -113,6 +113,27 @@ export default function Header({ user }: { user?: string | null }) {
       .toUpperCase()
   }, [currentUser, profile])
 
+  // When clicking the Seller Center link: if the visitor is a seller, go to manage;
+  // if they're a normal logged-in user or not logged in, go to seller auth (login)
+  const handleSellerCenterClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    try {
+      if (typeof window === 'undefined') return
+      if (isSellerLoggedIn()) {
+        window.location.href = '/seller/manage'
+        return
+      }
+      const normalUser = localStorage.getItem('user')
+      if (normalUser) {
+        window.location.href = '/seller/auth'
+        return
+      }
+      window.location.href = '/seller/auth'
+    } catch {
+      window.location.href = '/seller/auth'
+    }
+  }
+
   const hotKeywords = [
     'iPhone 16',
     'เคสโทรศัพท์',
@@ -135,16 +156,15 @@ export default function Header({ user }: { user?: string | null }) {
 
   const cartItems = React.useMemo(() => {
     try {
-      const raw = localStorage.getItem('cart')
-      const arr = JSON.parse(raw ?? '[]')
+      const arr = CartManager.getCart()
       if (!Array.isArray(arr)) return [] as any[]
       // Normalize basic fields
       return arr.slice(0, 5).map((it: any, idx: number) => ({
-        id: it.id ?? idx,
+        id: it._id ?? idx,
         name: it.name ?? 'สินค้า',
         price: it.price ?? 0,
-        qty: it.qty ?? 1,
-        image: it.image ?? 'https://picsum.photos/seed/cart/80/80',
+        qty: it.quantity ?? it.qty ?? 1,
+        image: (it.images && it.images[0]) || it.image || 'https://picsum.photos/seed/cart/80/80',
       }))
     } catch {
       return [] as any[]
@@ -157,7 +177,7 @@ export default function Header({ user }: { user?: string | null }) {
       <div className="bg-[#f05d40] text-white/90 text-xs">
         <div className="max-w-6xl mx-auto px-3 md:px-4 flex items-center justify-between h-9">
           <div className="flex items-center gap-3">
-            <Link href="/seller" className="hover:text-white/100">ศูนย์ผู้ขาย</Link>
+            <a href="/seller/manage" onClick={handleSellerCenterClick} className="hover:text-white/100">ศูนย์ผู้ขาย</a>
             <span className="opacity-60">|</span>
             <Link href="/admin" className="hover:text-white/100" onClick={e => { e.preventDefault(); window.location.href = '/admin'; }}>ผู้ดูแลระบบ</Link>
             <span className="hidden sm:inline opacity-60">|</span>

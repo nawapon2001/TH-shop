@@ -128,6 +128,12 @@ function OrderCard({ order }: { order: Order }) {
   const [open, setOpen] = useState(true)
   const [openChat, setOpenChat] = useState(false)
 
+  const handlePrintReceipt = (order: Order) => {
+    // สร้าง URL สำหรับหน้าพิมพ์ใบเสร็จ
+    const printUrl = `/print-receipt/${order._id}`
+    window.open(printUrl, '_blank')
+  }
+
   const items = Array.isArray(order.items) ? order.items : []
   const calcSubtotal = items.reduce((s, it) => s + (it.price || 0) * (it.qty || 1), 0)
   const shipCost = order.amounts?.shipCost ?? (order.delivery === 'express' ? 50 : 0)
@@ -139,7 +145,7 @@ function OrderCard({ order }: { order: Order }) {
     order.status === 'shipped' ? (
       <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-bold">จัดส่งแล้ว</span>
     ) : order.status === 'processing' ? (
-      <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-bold">ดำเนินการอยู่</span>
+      <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-bold">กำลังจัดการ</span>
     ) : order.status === 'paid' ? (
       <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-bold">ชำระเงินแล้ว</span>
     ) : order.status === 'completed' ? (
@@ -269,10 +275,10 @@ function OrderCard({ order }: { order: Order }) {
       {/* Actions */}
       <div className="mt-4 flex flex-wrap gap-2 justify-end">
         <button
-          onClick={() => window.print()}
+          onClick={() => handlePrintReceipt(order)}
           className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-orange-200 bg-white text-orange-800 hover:bg-orange-50"
         >
-          <Printer className="w-4 h-4" /> พิมพ์ใบสรุป
+          <Printer className="w-4 h-4" /> พิมพ์ใบเสร็จ
         </button>
         <button
           onClick={() => setOpenChat((s) => !s)}

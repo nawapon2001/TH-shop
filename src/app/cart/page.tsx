@@ -1,6 +1,7 @@
 'use client'
 import React, { useEffect, useMemo, useState } from 'react'
 import Header from '../../components/Header'
+import { CartManager } from '@/lib/cart-utils'
 import { Trash2, ShoppingBag, CreditCard, Plus, Minus, ChevronLeft } from 'lucide-react'
 
 type Product = {
@@ -16,15 +17,14 @@ type CartItem = Product & { qty: number }
 export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([])
 
-  // โหลดตะกร้า (อัปเกรดให้มี qty ถ้าเดิมยังไม่มี)
+  // load cart using canonical CartManager
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('cart')
-      const arr: any[] = raw ? JSON.parse(raw) : []
-      const withQty: CartItem[] = Array.isArray(arr)
-        ? arr.map((p) => ({ ...p, qty: Math.max(1, Number((p as any).qty) || 1) }))
+      const items = CartManager.getCart()
+      const mapped: CartItem[] = Array.isArray(items)
+        ? items.map((it) => ({ _id: it._id, name: it.name, price: it.price, image: it.image, qty: Math.max(1, Number(it.quantity) || 1) }))
         : []
-      setCart(withQty)
+      setCart(mapped)
     } catch {
       setCart([])
     }
@@ -32,11 +32,15 @@ export default function CartPage() {
 
   const saveCart = (items: CartItem[]) => {
     setCart(items)
-    localStorage.setItem('cart', JSON.stringify(items))
+    // rewrite canonical storage: clear and re-add
+    CartManager.clear()
+    items.forEach((it) => {
+      // CartManager.addProduct expects product object and quantity
+      CartManager.addProduct({ _id: it._id, name: it.name, price: it.price, image: it.image, images: it.image ? [it.image] : [], discountPercent: 0 }, it.qty)
+    })
   }
 
-  const inc = (id: string) =>
-    saveCart(cart.map((it) => (it._id === id ? { ...it, qty: it.qty + 1 } : it)))
+  const inc = (id: string) => saveCart(cart.map((it) => (it._id === id ? { ...it, qty: it.qty + 1 } : it)))
 
   const dec = (id: string) =>
     saveCart(

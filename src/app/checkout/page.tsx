@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '../../components/Header'
+import { CartManager } from '@/lib/cart-utils'
 import Swal from 'sweetalert2'
 import {
   ShoppingBag, Truck, CreditCard, Wallet, MapPin, Phone, User, ArrowLeft, Loader2, Package, QrCode, CheckCircle2, XCircle, Upload
@@ -24,6 +25,7 @@ type CartItem = {
   images?: string[]
   description?: string
   qty: number
+  seller?: string
 }
 
 type ProfileStorage = {
@@ -66,10 +68,20 @@ export default function CheckoutPage() {
   // Load cart + prefill from profile
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('cart')
-      const cartItems = raw ? JSON.parse(raw) : []
-      const itemsWithQty = Array.isArray(cartItems)
-        ? cartItems.map((item: any) => ({ ...item, qty: Math.max(1, Number(item.qty) || 1) }))
+      // Use CartManager to read the canonical cart (uses 'cart_v2')
+      const items = CartManager.getCart()
+      const itemsWithQty = Array.isArray(items)
+        ? items.map((it: any) => ({
+            _id: it._id,
+            name: it.name,
+            price: it.price,
+            image: it.image,
+            images: it.images,
+            description: it.description,
+            qty: Math.max(1, Number(it.quantity) || 1),
+            // preserve seller metadata captured by CartManager
+            seller: it.seller || it.sellerUsername || it.username || undefined,
+          }))
         : []
       setCart(itemsWithQty)
     } catch { setCart([]) }
@@ -100,9 +112,18 @@ export default function CheckoutPage() {
   // Helpers
   const phoneValid = useMemo(() => /^0\d{9}$/.test(phone.trim()), [phone])
   const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0), [cart])
+  
+  // Calculate number of separate orders (by seller)
+  const sellerCount = useMemo(() => {
+    const sellers = new Set(cart.map(item => (item as any).seller).filter(Boolean))
+    const hasNoSellerItems = cart.some(item => !(item as any).seller)
+    return sellers.size + (hasNoSellerItems ? 1 : 0)
+  }, [cart])
+  
   const shipCost = delivery === 'express' ? EXPRESS_SHIP : STANDARD_SHIP
+  const totalShipCost = shipCost * Math.max(1, sellerCount) // shipping per order/seller
   const codFee = payment === 'cod' ? 20 : 0
-  const total = subtotal + shipCost + codFee
+  const total = subtotal + totalShipCost + codFee
 
   // PromptPay QR: amount as 2 decimals
   const promptPayNumber = '0647472359'
@@ -208,39 +229,174 @@ export default function CheckoutPage() {
     }
     setLoading(true)
     try {
-      if (payment === 'transfer') {
-        const form = new FormData()
-        form.append('order', JSON.stringify({
-          name,
-          address,
-          phone,
-          note,
-          delivery,
-          payment,
-          items: cart,
-          amounts: { subtotal, shipCost, codFee, total },
-          promptpay: { number: promptPayNumber, url: promptPayQRUrl, amount: expectedAmountStr },
-          transfer: { declaredAmount: Number(parseFloat((transferAmountInput || expectedAmountStr) as string).toFixed(2)), slipHash }
-        }))
-        if (slipFile) form.append('slip', slipFile)
+      // normalize cart items to include productId and seller when available
+      const itemsToSend = cart.map(it => ({
+        _id: it._id,
+        name: it.name,
+        price: it.price,
+        image: it.image || (it.images && it.images[0]) || '',
+        qty: it.qty || 1,
+        // preserve any existing productId/seller fields if present
+        productId: (it as any).productId || (it as any)._id || undefined,
+        seller: (it as any).seller || (it as any).username || undefined,
+      }))
 
-        await postOrder(form, true)
-      } else {
-        await postOrder({
-          name,
-          address,
-          phone,
-          note,
-          delivery,
-          payment,
-          items: cart,
-          amounts: { subtotal, shipCost, codFee, total },
-        }, false)
+      // Group items by seller to create separate orders per shop
+      const itemsBySeller: Record<string, typeof itemsToSend> = {}
+      const noSellerItems: typeof itemsToSend = []
+      
+      for (const item of itemsToSend) {
+        const seller = (item as any).seller
+        if (seller) {
+          if (!itemsBySeller[seller]) itemsBySeller[seller] = []
+          itemsBySeller[seller].push(item)
+        } else {
+          noSellerItems.push(item)
+        }
       }
 
-      localStorage.removeItem('cart')
-      Swal.fire({ icon: 'success', title: 'สั่งซื้อสำเร็จ', timer: 1400, showConfirmButton: false })
-      setTimeout(() => router.push('/orders'), 1400)
+      // Collect unique seller usernames and fetch shop info
+      const sellerUsernames = Array.from(new Set(itemsToSend.map(i => (i as any).seller).filter(Boolean)))
+      const sellersMap: Record<string, any> = {}
+      if (sellerUsernames.length) {
+        // fetch seller info in parallel; tolerate failures
+        const sellerFetches = await Promise.all(
+          sellerUsernames.map(async (username) => {
+            try {
+              const url = `${API_BASE}/api/seller-info?username=${encodeURIComponent(username as string)}`
+              const res = await fetch(url, { method: 'GET', mode: API_BASE ? 'cors' : 'same-origin' })
+              if (!res.ok) return null
+              const data = await res.json().catch(() => null)
+              return { username, data }
+            } catch (e) {
+              return null
+            }
+          })
+        )
+        for (const s of sellerFetches) {
+          if (s && s.username && s.data) sellersMap[s.username] = s.data
+        }
+      }
+
+      // Create separate orders for each seller + one for items without seller
+      const ordersToCreate = []
+      
+      // Orders for each seller
+      for (const [seller, sellerItems] of Object.entries(itemsBySeller)) {
+        const sellerSubtotal = sellerItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0)
+        const sellerTotal = sellerSubtotal + shipCost + (payment === 'cod' ? codFee : 0)
+        
+        ordersToCreate.push({
+          seller,
+          items: sellerItems,
+          amounts: { 
+            subtotal: sellerSubtotal, 
+            shipCost, 
+            codFee: payment === 'cod' ? codFee : 0, 
+            total: sellerTotal 
+          },
+          sellers: sellersMap[seller] ? { [seller]: sellersMap[seller] } : undefined
+        })
+      }
+      
+      // Order for items without seller (if any)
+      if (noSellerItems.length > 0) {
+        const noSellerSubtotal = noSellerItems.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0)
+        const noSellerTotal = noSellerSubtotal + shipCost + (payment === 'cod' ? codFee : 0)
+        
+        ordersToCreate.push({
+          seller: null,
+          items: noSellerItems,
+          amounts: { 
+            subtotal: noSellerSubtotal, 
+            shipCost, 
+            codFee: payment === 'cod' ? codFee : 0, 
+            total: noSellerTotal 
+          },
+          sellers: undefined
+        })
+      }
+
+      // Submit each order separately
+      const orderResults = []
+      for (let i = 0; i < ordersToCreate.length; i++) {
+        const orderData = ordersToCreate[i]
+        
+        if (payment === 'transfer') {
+          const form = new FormData()
+          form.append('order', JSON.stringify({
+            name,
+            address,
+            phone,
+            note,
+            delivery,
+            payment,
+            items: orderData.items,
+            amounts: orderData.amounts,
+            sellers: orderData.sellers,
+            promptpay: { number: promptPayNumber, url: promptPayQRUrl, amount: orderData.amounts.total.toFixed(2) },
+            transfer: { declaredAmount: Number(parseFloat((transferAmountInput || orderData.amounts.total.toFixed(2)) as string).toFixed(2)), slipHash }
+          }))
+          // Only attach slip to first order to avoid duplication
+          if (slipFile && i === 0) form.append('slip', slipFile)
+          if (orderData.sellers) form.append('sellers', JSON.stringify(orderData.sellers))
+
+          // dev-only debug: preview payload being sent
+          if (process.env.NODE_ENV !== 'production') {
+            try {
+              console.debug(`[checkout] sending multipart order ${i + 1}/${ordersToCreate.length} (seller: ${orderData.seller || 'none'}):`, {
+                order: JSON.parse(String(form.get('order'))),
+                sellers: form.get('sellers') ? JSON.parse(String(form.get('sellers'))) : undefined,
+                slipAttached: !!form.get('slip')
+              })
+            } catch (e) {}
+          }
+
+          const result = await postOrder(form, true)
+          orderResults.push(result)
+        } else {
+          const jsonPayload = {
+            name,
+            address,
+            phone,
+            note,
+            delivery,
+            payment,
+            items: orderData.items,
+            amounts: orderData.amounts,
+            sellers: orderData.sellers
+          }
+
+          if (process.env.NODE_ENV !== 'production') {
+            try {
+              console.debug(`[checkout] sending json order ${i + 1}/${ordersToCreate.length} (seller: ${orderData.seller || 'none'}):`, { 
+                ...jsonPayload, 
+                items: (jsonPayload.items || []).slice(0,5) 
+              })
+            } catch (e) {}
+          }
+
+          const result = await postOrder(jsonPayload, false)
+          orderResults.push(result)
+        }
+      }
+
+  // clear canonical cart storage
+  CartManager.clear()
+      
+      const orderCount = orderResults.length
+      const successMessage = orderCount > 1 
+        ? `สั่งซื้อสำเร็จ (แยก ${orderCount} คำสั่งตามร้าน)` 
+        : 'สั่งซื้อสำเร็จ'
+      
+      Swal.fire({ 
+        icon: 'success', 
+        title: successMessage, 
+        text: orderCount > 1 ? 'คำสั่งซื้อถูกแยกตามร้านค้าแล้ว' : undefined,
+        timer: 2000, 
+        showConfirmButton: false 
+      })
+      setTimeout(() => router.push('/orders'), 2000)
     } catch (err: any) {
       console.error('Order submission error:', err)
       Swal.fire({ icon: 'error', title: 'สั่งซื้อไม่สำเร็จ', text: err?.message || 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ (500)' })
@@ -464,12 +620,24 @@ export default function CheckoutPage() {
                 {/* Totals */}
                 <div className="mt-4 space-y-1 text-sm">
                   <Row label="ยอดสินค้า" value={`฿${subtotal.toLocaleString()}`} />
-                  <Row label="ค่าจัดส่ง" value={`฿${shipCost.toLocaleString()}`} />
+                  {sellerCount > 1 ? (
+                    <Row 
+                      label={`ค่าจัดส่ง (${sellerCount} คำสั่ง)`} 
+                      value={`฿${shipCost.toLocaleString()} × ${sellerCount} = ฿${totalShipCost.toLocaleString()}`} 
+                    />
+                  ) : (
+                    <Row label="ค่าจัดส่ง" value={`฿${totalShipCost.toLocaleString()}`} />
+                  )}
                   <Row label="ค่าธรรมเนียม COD" value={codFee > 0 ? `฿${codFee.toLocaleString()}` : '-'} />
+                  {sellerCount > 1 && (
+                    <div className="text-xs text-orange-600 italic">
+                      * จะแยกเป็น {sellerCount} คำสั่งซื้อตามร้านค้า
+                    </div>
+                  )}
                   <div className="h-px bg-orange-100 my-2" />
                   <Row
                     label="ยอดชำระทั้งหมด"
-                    value={`฿${(subtotal + shipCost + codFee).toLocaleString()}`}
+                    value={`฿${total.toLocaleString()}`}
                     bold
                     valueClass="text-orange-700"
                   />
@@ -517,36 +685,7 @@ export default function CheckoutPage() {
           </aside>
         </form>
 
-        {/* ---------- Server-side sample (comment) ---------- */}
-        {`
-        // ถ้าใช้เซิร์ฟเวอร์แยก (พอร์ต 3001) ให้ตั้งค่า env:
-        // NEXT_PUBLIC_API_BASE=http://192.168.1.110:3001
-        // แล้วรีสตาร์ท dev server
-
-        // ตัวอย่าง Express + formidable (TypeScript):
-        // import express from 'express'
-        // import formidable from 'formidable'
-        // import cors from 'cors'
-        // const app = express()
-        // app.use(cors({ origin: true, credentials: true })) // เปิด CORS ถ้าเรียกข้ามโดเมน/พอร์ต
-        // app.post('/api/orders', (req, res) => {
-        //   const form = formidable({ multiples: false })
-        //   form.parse(req, (err, fields, files) => {
-        //     if (err) return res.status(400).json({ error: 'parse_error' })
-        //     try {
-        //       const order = JSON.parse(String(fields.order || '{}'))
-        //       const declared = Number(order?.transfer?.declaredAmount || 0)
-        //       const expected = Number(order?.amounts?.subtotal + order?.amounts?.shipCost + order?.amounts?.codFee)
-        //       const match = Math.abs(Number(declared.toFixed(2)) - Number(expected.toFixed(2))) <= 0.01
-        //       // TODO: เก็บไฟล์ files.slip, บันทึก DB, ตรวจสอบเพิ่ม
-        //       return res.status(200).json({ ok: true, match })
-        //     } catch (e) {
-        //       return res.status(500).json({ error: 'server_error', message: (e as Error).message })
-        //     }
-        //   })
-        // })
-        // app.listen(3001)
-        `}
+      
       </div>
 
       {/* Mobile bottom CTA */}

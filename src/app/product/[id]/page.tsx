@@ -2,12 +2,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Header from '@/components/Header'
 import ReactMarkdown from 'react-markdown'
 import { CartManager } from '@/lib/cart-utils'
 import {
   ChevronLeft, ChevronRight, Star, Truck, ShieldCheck, Tag, Share2, Heart, X, Maximize2
 } from 'lucide-react'
+import { Store } from 'lucide-react'
 
 // -------------------------------
 // Types
@@ -96,6 +98,7 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [liked, setLiked] = useState(false)
   const [lightbox, setLightbox] = useState(false)
+  const [sellerInfo, setSellerInfo] = useState<any | null>(null)
 
   // Fetch product by id
   useEffect(() => {
@@ -103,20 +106,55 @@ export default function ProductDetailPage() {
     async function fetchProduct() {
       try {
         setLoading(true)
-        const res = await fetch(`/api/products/${id}`)
-        if (!res.ok) throw new Error('fetch failed')
-        const data = await res.json()
+        // try main products first
+        let res = await fetch(`/api/products/${id}`)
+        let data: any = null
+        if (res.ok) {
+          data = await res.json()
+        } else {
+          // if id was prefixed when merged (e.g. 'seller-<id>'), strip prefix
+          let lookupId = id
+          if (typeof lookupId === 'string' && lookupId.startsWith('seller-')) lookupId = lookupId.replace(/^seller-/, '')
+          // try seller_products
+          const spRes = await fetch(`/api/seller-products?id=${encodeURIComponent(lookupId)}`)
+          if (spRes.ok) {
+            data = await spRes.json()
+            // normalize seller product fields to Product shape
+            data = {
+              _id: data._id ? String(data._id) : String(lookupId),
+              name: data.name || 'สินค้าจากร้าน',
+              price: Number(data.price) || 0,
+              image: data.image || '',
+              images: data.images || [],
+              description: data.desc || data.description || '' ,
+              category: data.category || '',
+              // include real metrics when available
+              rating: data.rating ?? 0,
+              reviews: data.reviews ?? 0,
+              sold: data.sold ?? 0,
+              discountPercent: data.discountPercent ?? 0,
+              stock: data.stock ?? 0,
+            }
+            // also set sellerInfo if available
+            if (data && data.username) {
+              // nothing here; sellerInfo fetch handled below
+            }
+          } else {
+            throw new Error('fetch failed')
+          }
+        }
 
-        const normalizedOptions = normalizeOptionsUI(data.options)
+  const normalizedOptions = normalizeOptionsUI(data.options)
 
         const enriched: Product = {
           ...data,
           options: normalizedOptions,
-          rating: data.rating ?? 4.8,
-          reviews: data.reviews ?? 123,
-          sold: data.sold ?? 456,
-          discountPercent: data.discountPercent ?? 15,
-          stock: data.stock ?? 999
+          // use real values from the DB when present, otherwise fall back to safe zeros
+          rating: data.rating ?? 0,
+          reviews: data.reviews ?? 0,
+          sold: data.sold ?? 0,
+          discountPercent: data.discountPercent ?? 0,
+          stock: data.stock ?? 0
         }
 
         if (!mounted) return
@@ -137,6 +175,26 @@ export default function ProductDetailPage() {
       }
     }
     fetchProduct()
+    // fetch seller info for this product from seller_products collection
+    ;(async () => {
+      try {
+        // normalize lookup id (handles 'seller-<id>' prefix used when merging lists)
+        let lookupId = id
+        if (typeof lookupId === 'string' && lookupId.startsWith('seller-')) lookupId = lookupId.replace(/^seller-/, '')
+        const spRes = await fetch(`/api/seller-products?id=${encodeURIComponent(lookupId)}`)
+        if (!spRes.ok) return
+        const sp = await spRes.json().catch(()=>null)
+        if (!sp) return
+        const username = sp.username || sp.seller || sp.owner || sp.user
+        if (!username) return
+        const sRes = await fetch(`/api/seller-info?username=${encodeURIComponent(username)}`)
+        if (!sRes.ok) return
+        const s = await sRes.json().catch(()=>null)
+        if (s) setSellerInfo(s)
+      } catch (err) {
+        // ignore
+      }
+    })()
     return () => { mounted = false }
   }, [id])
 
@@ -188,7 +246,12 @@ export default function ProductDetailPage() {
       alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนเพิ่มเข้าตะกร้า')
       return
     }
-    CartManager.addProduct({ ...product, selectedOptions } as any, quantity)
+    CartManager.addProduct({
+      ...product,
+      selectedOptions,
+      // attach seller username when available (sellerInfo fetched separately)
+      seller: (product as any).seller || (product as any).sellerUsername || sellerInfo?.username || (product as any).username || undefined,
+    } as any, quantity)
   }
 
   const buyNow = () => {
@@ -197,7 +260,11 @@ export default function ProductDetailPage() {
       alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนสั่งซื้อ')
       return
     }
-    CartManager.addProduct({ ...product, selectedOptions } as any, quantity)
+    CartManager.addProduct({
+      ...product,
+      selectedOptions,
+      seller: (product as any).seller || (product as any).sellerUsername || sellerInfo?.username || (product as any).username || undefined,
+    } as any, quantity)
     router.push('/checkout')
   }
 
@@ -305,7 +372,14 @@ export default function ProductDetailPage() {
           {/* Right: Info */}
           <div className="flex-1 flex flex-col gap-4 md:sticky md:top-8 relative z-20">
             <div className="flex items-start justify-between gap-3">
-              <h1 className="text-2xl md:text-3xl font-extrabold leading-snug text-gray-900">{product.name}</h1>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-extrabold leading-snug text-gray-900">{product.name}</h1>
+                {sellerInfo && (
+                  <div className="mt-1 text-sm text-slate-600">
+                    ร้าน: <Link href={`/seller/${encodeURIComponent(sellerInfo.username)}`} className="text-orange-700 font-medium">{sellerInfo.shopName || sellerInfo.username}</Link>
+                  </div>
+                )}
+              </div>
               <div className="hidden md:flex items-center gap-2 text-gray-500">
                 <button
                   className={`p-2 rounded-full border ${liked ? 'border-red-300 bg-red-50 text-red-600' : 'border-orange-200 hover:bg-orange-50'}`}
@@ -337,6 +411,24 @@ export default function ProductDetailPage() {
               <span className="text-gray-300">|</span>
               <span className="text-gray-600">ขายแล้ว {formatTHB(product.sold ?? 0)}</span>
             </div>
+
+            {/* Seller card */}
+            {sellerInfo && (
+              <div className="mt-4 p-4 border rounded-lg bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded overflow-hidden bg-orange-50 border">
+                    {sellerInfo.image ? <img src={sellerInfo.image} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-3" />}
+                  </div>
+                  <div>
+                    <div className="font-semibold">{sellerInfo.shopName || sellerInfo.username}</div>
+                    <div className="text-sm text-slate-600">ผู้ขาย: {sellerInfo.fullName || sellerInfo.username}</div>
+                  </div>
+                  <div className="ml-auto">
+                    <button onClick={() => router.push(`/seller/${encodeURIComponent(sellerInfo.username)}`)} className="px-3 py-1 rounded bg-orange-600 text-white">ไปที่หน้าร้าน</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Price */}
             <div className="flex items-end gap-4">

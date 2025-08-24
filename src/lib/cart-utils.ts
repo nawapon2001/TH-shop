@@ -7,6 +7,8 @@ export type CartItem = {
   image?: string
   images?: string[]
   quantity: number
+  // optional seller username for seller-specific order routing
+  seller?: string
   selectedOptions?: SelectedOptions
   discountPercent?: number
 }
@@ -47,6 +49,8 @@ export const CartManager = {
       image: product.image,
       images: product.images,
       quantity,
+  // capture seller metadata when available so orders can be attributed to sellers
+  seller: product.seller || product.sellerUsername || product.username || undefined,
       selectedOptions: product.selectedOptions || undefined,
       discountPercent: product.discountPercent
     }

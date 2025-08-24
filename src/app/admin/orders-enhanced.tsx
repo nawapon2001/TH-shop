@@ -81,7 +81,7 @@ export default function AdminOrdersPage() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'pending': return 'รอดำเนินการ'
-      case 'processing': return 'ดำเนินการอยู่'
+      case 'processing': return 'กำลังจัดการ'
       case 'paid': return 'ชำระเงินแล้ว'
       case 'shipped': return 'จัดส่งแล้ว'
       case 'completed': return 'สำเร็จ'
@@ -127,7 +127,7 @@ export default function AdminOrdersPage() {
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="pending">รอดำเนินการ</option>
-                  <option value="processing">ดำเนินการอยู่</option>
+                  <option value="processing">กำลังจัดการ</option>
                   <option value="paid">ชำระเงินแล้ว</option>
                   <option value="shipped">จัดส่งแล้ว</option>
                   <option value="completed">สำเร็จ</option>

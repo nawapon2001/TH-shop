@@ -10,7 +10,8 @@ import { MessageCircle } from 'lucide-react'
 import {
   Settings, LayoutGrid, Image as ImageIcon, Tag, PackagePlus, ListOrdered, Truck,
   RefreshCw, Upload, Trash2, LogIn, Search, CalendarClock,
-  User, Phone, MapPin, Package, Filter, SortDesc, CheckCircle2, XCircle, BadgeCheck, Loader2, Copy
+  User, Phone, MapPin, Package, Filter, SortDesc, CheckCircle2, XCircle, BadgeCheck, Loader2, Copy, Store,
+  BarChart3, TrendingUp, Users, ShoppingCart, Activity, DollarSign, Eye, AlertCircle
 } from 'lucide-react'
 
 /* ---------- Types ---------- */
@@ -19,7 +20,7 @@ type Product = { _id: string; name: string; price: number; image?: string; image
 type Banner = { _id: string; url?: string; image?: string; isSmall?: boolean }
 
 type Category = { name: string; icon?: string }
-type TabKey = 'orders' | 'banner' | 'category' | 'product' | 'list' | 'admins'
+type TabKey = 'dashboard' | 'orders' | 'banner' | 'category' | 'product' | 'list' | 'admins' | 'accounts'
 
 type OrderItem = { name: string; price: number; image?: string }
 type Amounts = { subtotal?: number; shipCost?: number; codFee?: number; total?: number }
@@ -75,6 +76,305 @@ const loadAdmins = (): AdminCred[] => {
 const saveAdmins = (list: AdminCred[]) => {
   if (typeof window === 'undefined') return
   localStorage.setItem(ADMIN_STORE_KEY, JSON.stringify(list))
+}
+
+/* ---------- Dashboard Components ---------- */
+interface DashboardSectionProps {
+  products: Product[]
+  orders: Order[]
+  users: any[]
+  sellersList: any[]
+  loading: boolean
+}
+
+const DashboardSection = ({ products, orders, users, sellersList, loading }: DashboardSectionProps) => {
+  // Calculate statistics
+  const totalProducts = products.length
+  const totalOrders = orders.length
+  const totalUsers = users.length
+  const totalSellers = sellersList.length
+  
+  // Calculate order statistics by status
+  const ordersByStatus = STATUS_ORDER.reduce((acc, status) => {
+    acc[status] = orders.filter(order => order.status === status).length
+    return acc
+  }, {} as Record<OrderStatus, number>)
+  
+  // Calculate revenue (estimate from completed orders)
+  const totalRevenue = orders
+    .filter(order => order.status === 'completed')
+    .reduce((sum, order) => sum + (order.amounts?.total || 0), 0)
+  
+  // Recent activity
+  const recentOrders = orders
+    .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
+    .slice(0, 5)
+    
+  // Category distribution
+  const categoryDistribution = products.reduce((acc, product) => {
+    const category = product.category || 'ไม่ระบุ'
+    acc[category] = (acc[category] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-blue-600" />
+          <div className="text-slate-600">กำลังโหลดข้อมูล...</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">แดชบอร์ด</h1>
+          <p className="text-slate-600 mt-1">ภาพรวมของระบบและสถิติต่างๆ</p>
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          รีเฟรช
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <KPICard
+          title="สินค้าทั้งหมด"
+          value={totalProducts.toLocaleString()}
+          icon={<Package className="w-8 h-8 text-blue-600" />}
+          color="blue"
+          subtitle="รายการสินค้า"
+        />
+        <KPICard
+          title="คำสั่งซื้อ"
+          value={totalOrders.toLocaleString()}
+          icon={<ShoppingCart className="w-8 h-8 text-green-600" />}
+          color="green"
+          subtitle="คำสั่งซื้อทั้งหมด"
+        />
+        <KPICard
+          title="ผู้ใช้งาน"
+          value={totalUsers.toLocaleString()}
+          icon={<Users className="w-8 h-8 text-purple-600" />}
+          color="purple"
+          subtitle="บัญชีผู้ใช้"
+        />
+        <KPICard
+          title="ร้านค้า"
+          value={totalSellers.toLocaleString()}
+          icon={<Store className="w-8 h-8 text-orange-600" />}
+          color="orange"
+          subtitle="ร้านค้าในระบบ"
+        />
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Order Status Chart */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+            สถานะคำสั่งซื้อ
+          </h3>
+          <div className="space-y-3">
+            {STATUS_ORDER.map(status => {
+              const count = ordersByStatus[status] || 0
+              const percentage = totalOrders > 0 ? (count / totalOrders) * 100 : 0
+              return (
+                <div key={status} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${getStatusColor(status)}`}></div>
+                    <span className="text-sm font-medium text-slate-700">{STATUS_LABEL[status]}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 bg-slate-100 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full ${getStatusBgColor(status)}`}
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                    <span className="text-sm font-bold text-slate-800 w-8 text-right">{count}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Category Distribution */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-green-600" />
+            การกระจายหมวดหมู่สินค้า
+          </h3>
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {Object.entries(categoryDistribution)
+              .sort(([,a], [,b]) => b - a)
+              .slice(0, 8)
+              .map(([category, count], index) => {
+                const percentage = totalProducts > 0 ? (count / totalProducts) * 100 : 0
+                const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500']
+                return (
+                  <div key={category} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${colors[index % colors.length]}`}></div>
+                      <span className="text-sm font-medium text-slate-700 truncate max-w-32">{category}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 bg-slate-100 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${colors[index % colors.length]}`}
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-bold text-slate-800 w-8 text-right">{count}</span>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activity & Revenue */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Orders */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
+          <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-green-600" />
+            คำสั่งซื้อล่าสุด
+          </h3>
+          <div className="space-y-3">
+            {recentOrders.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                <div>ยังไม่มีคำสั่งซื้อ</div>
+              </div>
+            ) : (
+              <>
+                {recentOrders.map(order => (
+                  <div key={order._id} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-b-0">
+                    <div>
+                      <div className="font-medium text-slate-800">{order.name}</div>
+                      <div className="text-sm text-slate-500">
+                        {order.items.length} รายการ • ฿{(order.amounts?.total || 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(order.status || 'pending')}`}>
+                        {STATUS_LABEL[order.status || 'pending']}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString('th-TH') : '-'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Revenue Card */}
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold">รายได้รวม</h3>
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div className="text-3xl font-bold mb-2">
+            ฿{totalRevenue.toLocaleString()}
+          </div>
+          <div className="text-green-100 text-sm">
+            จากคำสั่งซื้อที่สำเร็จแล้ว
+          </div>
+          <div className="mt-4 pt-4 border-t border-green-400">
+            <div className="flex justify-between text-sm">
+              <span>คำสั่งซื้อที่สำเร็จ</span>
+              <span className="font-semibold">{ordersByStatus.completed || 0}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Helper component for KPI cards
+interface KPICardProps {
+  title: string
+  value: string
+  icon: React.ReactNode
+  color: 'blue' | 'green' | 'purple' | 'orange'
+  subtitle: string
+}
+
+const KPICard = ({ title, value, icon, color, subtitle }: KPICardProps) => {
+  const colorClasses = {
+    blue: 'from-blue-500 to-blue-600',
+    green: 'from-green-500 to-green-600', 
+    purple: 'from-purple-500 to-purple-600',
+    orange: 'from-orange-500 to-orange-600'
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between mb-4">
+        <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]} shadow-lg`}>
+          {icon}
+        </div>
+        <Eye className="w-5 h-5 text-slate-400" />
+      </div>
+      <div className="text-3xl font-bold text-slate-800 mb-1">{value}</div>
+      <div className="text-slate-600 font-medium">{title}</div>
+      <div className="text-slate-500 text-sm mt-1">{subtitle}</div>
+    </div>
+  )
+}
+
+// Helper functions for status styling
+const getStatusColor = (status: OrderStatus) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-500'
+    case 'processing': return 'bg-blue-500'
+    case 'paid': return 'bg-green-500'
+    case 'shipped': return 'bg-purple-500'
+    case 'completed': return 'bg-emerald-500'
+    case 'cancelled': return 'bg-red-500'
+    default: return 'bg-gray-500'
+  }
+}
+
+const getStatusBgColor = (status: OrderStatus) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-500'
+    case 'processing': return 'bg-blue-500'
+    case 'paid': return 'bg-green-500'
+    case 'shipped': return 'bg-purple-500'
+    case 'completed': return 'bg-emerald-500'
+    case 'cancelled': return 'bg-red-500'
+    default: return 'bg-gray-500'
+  }
+}
+
+const getStatusStyle = (status: OrderStatus) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-100 text-yellow-800'
+    case 'processing': return 'bg-blue-100 text-blue-800'
+    case 'paid': return 'bg-green-100 text-green-800'
+    case 'shipped': return 'bg-purple-100 text-purple-800'
+    case 'completed': return 'bg-emerald-100 text-emerald-800'
+    case 'cancelled': return 'bg-red-100 text-red-800'
+    default: return 'bg-gray-100 text-gray-800'
+  }
 }
 
 /* ---------- หน้า Admin ---------- */
@@ -169,13 +469,15 @@ export default function AdminPage() {
   }
 
   /* ---------- Data ---------- */
-  const [tab, setTab] = useState<TabKey>('orders')
+  const [tab, setTab] = useState<TabKey>('dashboard')
   const [loading, setLoading] = useState(false)
 
   const [products, setProducts] = useState<Product[]>([])
   const [banners, setBanners] = useState<Banner[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [users, setUsers] = useState<any[]>([])
+  const [sellersList, setSellersList] = useState<any[]>([])
 
   const productCount = products.length
   const bannerCount = banners.length
@@ -190,8 +492,24 @@ export default function AdminPage() {
     else setCategories(Array.isArray(d)?d:[])
   } catch { setCategories([]) } }
   const fetchOrders = async () => { try { const r = await fetch('/api/orders', { cache: 'no-store' }); const d = await r.json(); setOrders(Array.isArray(d)?d:[]) } catch { setOrders([]) } }
-  const refreshAll = async () => { setLoading(true); await Promise.all([fetchProducts(), fetchBanners(), fetchCategories(), fetchOrders()]); setLoading(false) }
+  const refreshAll = async () => { setLoading(true); await Promise.all([fetchProducts(), fetchBanners(), fetchCategories(), fetchOrders(), fetchUsers(), fetchSellersList()]); setLoading(false) }
   useEffect(()=>{ refreshAll() }, [])
+
+  // fetch users and sellers for accounts tab
+  const fetchUsers = async () => { try { const r = await fetch('/api/admin-users'); const d = await r.json(); setUsers(Array.isArray(d)?d:[]) } catch { setUsers([]) } }
+  const fetchSellersList = async () => { try { const r = await fetch('/api/sellers'); const d = await r.json(); setSellersList(Array.isArray(d)?d:[]) } catch { setSellersList([]) } }
+
+  // include in refresh
+  const refreshAllWithAccounts = async () => { setLoading(true); await Promise.all([fetchProducts(), fetchBanners(), fetchCategories(), fetchOrders(), fetchUsers(), fetchSellersList()]); setLoading(false) }
+  useEffect(()=>{ fetchUsers(); fetchSellersList() }, [])
+
+  // refresh accounts when opening accounts tab
+  useEffect(() => {
+    if (tab === 'accounts') {
+      fetchUsers()
+      fetchSellersList()
+    }
+  }, [tab])
 
   /* ---------- Banner ops ---------- */
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -465,12 +783,14 @@ export default function AdminPage() {
            {/* Enhanced navigation */}
            <nav className="flex-1 space-y-2">
              <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-4 mb-3 px-3">เมนูหลัก</div>
+             <NavButton icon={<BarChart3 className="w-4 h-4" />} active={tab==='dashboard'} onClick={()=>setTab('dashboard')}>แดชบอร์ด</NavButton>
              <NavButton icon={<Truck className="w-4 h-4" />} active={tab==='orders'} onClick={()=>setTab('orders')} badge={orders.length}>คำสั่งซื้อ</NavButton>
              <NavButton icon={<ImageIcon className="w-4 h-4" />} active={tab==='banner'} onClick={()=>setTab('banner')}>แบนเนอร์</NavButton>
              <NavButton icon={<Tag className="w-4 h-4" />} active={tab==='category'} onClick={()=>setTab('category')}>หมวดหมู่</NavButton>
              <NavButton icon={<PackagePlus className="w-4 h-4" />} active={tab==='product'} onClick={()=>setTab('product')}>เพิ่มสินค้า</NavButton>
              <NavButton icon={<ListOrdered className="w-4 h-4" />} active={tab==='list'} onClick={()=>setTab('list')}>รายการสินค้า</NavButton>
              <NavButton icon={<User className="w-4 h-4" />} active={tab==='admins'} onClick={() => setTab('admins')}>ผู้ดูแลระบบ</NavButton>
+             <NavButton icon={<BadgeCheck className="w-4 h-4" />} active={tab==='accounts'} onClick={() => setTab('accounts')}>บัญชีผู้ใช้ / ร้านค้า</NavButton>
            </nav>
          </aside>
  
@@ -508,6 +828,16 @@ export default function AdminPage() {
            </div>
 
            {/* Tab content with enhanced styling */}
+           {tab === 'dashboard' && (
+             <DashboardSection 
+               products={products}
+               orders={orders}
+               users={users}
+               sellersList={sellersList}
+               loading={loading}
+             />
+           )}
+
            {tab === 'orders' && (
              <OrdersSection
                loading={loading}
@@ -714,6 +1044,77 @@ export default function AdminPage() {
                                  </div>
                </div>
              </SectionCard>
+          )}
+
+          {tab === 'accounts' && (
+            <SectionCard title="จัดการบัญชีผู้ใช้ & ร้านค้า" subtitle="ลบผู้ใช้ แก้รหัสผ่าน หรือ ลบร้านค้าที่แสดงในระบบ">
+              <div className="grid gap-6">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold text-lg">ผู้ใช้งาน</div>
+                    <div className="text-sm text-slate-500">ทั้งหมด {users.length} รายการ</div>
+                  </div>
+                  <div className="grid gap-2">
+                    {users.map(u => (
+                      <div key={u.email || u._id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
+                        <div className="flex-1">
+                          <div className="font-semibold">{u.fullName || u.email}</div>
+                          <div className="text-xs text-slate-500">{u.email}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1 rounded-full bg-yellow-500 text-white text-sm" onClick={async ()=>{
+                            const { value: newPass } = await Swal.fire({ title: 'ตั้งรหัสผ่านใหม่', input: 'password', inputLabel: `ตั้งรหัสผ่านใหม่ให้ ${u.email}`, showCancelButton: true })
+                            if (!newPass) return
+                            const res = await fetch('/api/admin-users', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ email: u.email, password: newPass }) })
+                            if (!res.ok) return Swal.fire({ icon: 'error', title: 'ไม่สามารถเปลี่ยนรหัสผ่านได้' })
+                            Swal.fire({ icon: 'success', title: 'เปลี่ยนรหัสผ่านสำเร็จ', timer: 1200, showConfirmButton: false })
+                          }}>เปลี่ยนรหัสผ่าน</button>
+                          <button className="px-3 py-1 rounded-full bg-red-600 text-white text-sm" onClick={async ()=>{
+                            const ok = await Swal.fire({ title: `ลบผู้ใช้ ${u.email}?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ' })
+                            if (!ok.isConfirmed) return
+                            await fetch(`/api/admin-users?email=${encodeURIComponent(u.email)}`, { method: 'DELETE' })
+                            await fetchUsers()
+                            Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 1000, showConfirmButton: false })
+                          }}>ลบ</button>
+                        </div>
+                      </div>
+                    ))}
+                    {users.length===0 && <div className="text-slate-500">ไม่มีผู้ใช้งาน</div>}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold text-lg">ร้านค้าที่ลงทะเบียน</div>
+                    <div className="text-sm text-slate-500">ทั้งหมด {sellersList.length} ร้าน</div>
+                  </div>
+                  <div className="grid gap-2">
+                    {sellersList.map(s => (
+                      <div key={s.username || s._id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="w-10 h-10 rounded overflow-hidden bg-orange-50 border">{s.image ? <img src={s.image} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-2" />}</div>
+                          <div>
+                            <div className="font-semibold">{s.shopName || s.username}</div>
+                            <div className="text-xs text-slate-500">{s.username}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1 rounded-full bg-red-600 text-white text-sm" onClick={async ()=>{
+                            const ok = await Swal.fire({ title: `ลบร้าน ${s.shopName || s.username}?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ' })
+                            if (!ok.isConfirmed) return
+                            const res = await fetch(`/api/seller-info?username=${encodeURIComponent(s.username)}`, { method: 'DELETE' })
+                            if (!res.ok) return Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ' })
+                            await fetchSellersList()
+                            Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 1000, showConfirmButton: false })
+                          }}>ลบร้าน</button>
+                        </div>
+                      </div>
+                    ))}
+                    {sellersList.length===0 && <div className="text-slate-500">ไม่มีร้านค้าในระบบ</div>}
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
           )}
  
         </main>
@@ -1053,7 +1454,7 @@ function OrdersSection({
          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
            <div className="relative">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-             <input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="ค้นหา: ชื่อ/เบอร์/ที่อยู่/สินค้า/รหัสออเดอร์" className="h-11 w-full rounded-xl border border-orange-200 bg-white pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-orange-300" />
+             <input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="ค้นหา: ชื่อ/เบอร์/ที่อยู่/สินค้า/รหัสออเดอร์" className="h-11 w-full rounded-xl border border-orange-200 bg-white pl-9 pr-3 text-sm outline-none focus:ring-4 focus:ring-orange-300" />
            </div>
            <div className="relative">
              <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1124,7 +1525,7 @@ function OrdersSection({
                      </div>
 
                      <div className="mt-3 grid gap-2">
-                       <label className="text-xs font-semibold text-slate-600">อัปเดตสถานะ</label>
+                       <label className="text-xs font-semibold text-slate-600 mb-2">อัปเดตสถานะ</label>
                        <select className="h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-orange-300" value={o.status || 'pending'} onChange={(e)=>onUpdateStatus(o._id, e.target.value as any)}>
                          {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                        </select>
@@ -1170,136 +1571,58 @@ function OrdersSection({
    }
  }
 
- /* ---------- Products list (unchanged) ---------- */
- function ProductsList({ products, onRefresh, onDelete }: { products: Product[]; onRefresh: () => void; onDelete: (id: string)=>void }) {
-   const [local, setLocal] = useState(products)
-   const [selectedProduct, setSelectedProduct] = useState<Product|null>(null)
-   const [q, setQ] = useState('')
-   const [catFilter, setCatFilter] = useState<string>('')
-   useEffect(()=>setLocal(products),[products])
+ // Products list component for admin
+interface ProductsListProps {
+  products: Product[]
+  onRefresh: () => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}
 
-   const cats = Array.from(new Set(products.map(p=>p.category).filter(Boolean)))
-   useEffect(()=> {
-     let list = products
-     if (q.trim()) list = list.filter(p => p.name.toLowerCase().includes(q.trim().toLowerCase()))
-     if (catFilter) list = list.filter(p => p.category === catFilter)
-     setLocal(list)
-   }, [q, catFilter, products])
+const ProductsList = ({ products, onRefresh, onDelete }: ProductsListProps) => {
+  const [page, setPage] = useState(1)
+  const perPage = 20
+  const total = products.length
+  const pages = Math.max(1, Math.ceil(total / perPage))
+  const paged = products.slice((page - 1) * perPage, page * perPage)
 
-   return (
-     <SectionCard title="รายการสินค้า" subtitle="ค้นหา แก้ไข หรือลบสินค้าได้จากที่นี่">
-       {/* Toolbar */}
-       <div className="mb-4 flex flex-col sm:flex-row items-center gap-3">
-         <div className="relative flex-1">
-           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-           <input value={q} onChange={(e)=>setQ(e.target.value)} className="w-full pl-9 pr-3 h-10 rounded-xl border border-orange-200 bg-white focus:outline-none focus:ring-2 focus:ring-orange-300" placeholder="ค้นหาสินค้า (ชื่อ)..." />
-         </div>
-         <select value={catFilter} onChange={(e)=>setCatFilter(e.target.value)} className="h-10 rounded-xl border border-orange-200 bg-white px-3">
-           <option value="">หมวดหมู่ทั้งหมด</option>
-           {cats.map(c=> <option key={c} value={c}>{c}</option>)}
-         </select>
-         <div className="ml-auto flex items-center gap-2">
-           <button onClick={onRefresh} className="h-10 px-3 rounded-xl bg-white border border-orange-200 text-orange-700 hover:bg-orange-50 inline-flex items-center gap-2"><RefreshCw className='w-4 h-4'/>รีเฟรช</button>
-         </div>
-       </div>
+  const handleDelete = async (id: string) => {
+    const ok = await Swal.fire({ icon: 'warning', title: 'ลบสินค้านี้หรือไม่?', showCancelButton: true, confirmButtonText: 'ลบ' })
+    if (!ok.isConfirmed) return
+    await onDelete(id)
+    await onRefresh()
+    Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 900, showConfirmButton: false })
+  }
 
-       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-         {local.map((p) => (
-           <div key={p._id} className="rounded-2xl border border-orange-200 bg-white shadow-sm p-4 hover:shadow-lg transition group">
-             <div className="flex items-start gap-3">
-               <div className="w-20 h-20 flex-shrink-0 rounded-md overflow-hidden bg-orange-50 border">
-                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                 <img src={p.images?.[0] || p.image || 'https://via.placeholder.com/120'} alt={p.name} className="w-full h-full object-cover" />
-               </div>
-               <div className="flex-1 min-w-0">
-                 <div className="flex items-start justify-between gap-2">
-                   <div>
-                     <h3 className="text-base font-semibold text-orange-700 truncate">{p.name}</h3>
-                     <div className="text-xs text-slate-500 mt-1">หมวดหมู่: {p.category || '-'}</div>
-                   </div>
-                   <div className="text-right">
-                     <div className="text-green-700 font-bold">{p.price.toLocaleString()} ฿</div>
-                     <div className="text-xs text-slate-400">{/* stock/sku placeholder */}</div>
-                   </div>
-                 </div>
-                 {p.description && <p className="text-sm text-slate-600 mt-2 line-clamp-3">{p.description}</p>}
-               </div>
-             </div>
+  return (
+    <SectionCard title="รายการสินค้า" subtitle={`ทั้งหมด ${total} รายการ`}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {paged.map(p => (
+            <div key={p._id} className="bg-white rounded-xl border p-4 flex gap-3 items-center">
+              <div className="w-20 h-20 bg-slate-50 flex items-center justify-center overflow-hidden rounded">
+                {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <div className="text-slate-300">ไม่มีรูป</div>}
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-800 line-clamp-2">{p.name}</div>
+                <div className="text-sm text-slate-500">฿{Number(p.price).toLocaleString()}</div>
+                <div className="text-xs text-slate-400 mt-2">หมวดหมู่: {p.category || '-'}</div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <a href={`/product/${p._id}`} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-full bg-slate-100 text-slate-700 text-sm">ดู</a>
+                <button onClick={()=>handleDelete(p._id)} className="px-3 py-2 rounded-full bg-red-600 text-white text-sm">ลบ</button>
+              </div>
+            </div>
+          ))}
+        </div>
 
-             <div className="mt-3 flex items-center justify-between">
-               <div className="flex items-center gap-2">
-                 <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelectedProduct(p) }} className="px-3 py-1 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700">ดู</button>
-                 <button onClick={async (e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('ยืนยันลบสินค้านี้?')) return; await onDelete(p._id) }} className="px-3 py-1 rounded-full bg-red-600 text-white text-sm hover:bg-red-700">ลบ</button>
-               </div>
-               <div className="text-xs text-slate-500">ID: {p._id.slice(-6)}</div>
-             </div>
-           </div>
-         ))}
-       </div>
-
-       {local.length===0 && <div className="text-slate-500 mt-4">ไม่พบสินค้า</div>}
-
-       {/* Modal ดูรายละเอียดสินค้า */}
-       {selectedProduct && (
-         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={() => setSelectedProduct(null)}>
-           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-             <button
-               className="absolute top-4 right-4 text-red-600 font-bold text-2xl hover:bg-red-100 rounded-full w-10 h-10 flex items-center justify-center"
-               onClick={() => setSelectedProduct(null)}
-             >
-               ×
-             </button>
-
-             <div className="flex flex-col md:flex-row gap-6">
-               {/* Gallery รูปภาพ */}
-               <div className="flex-shrink-0 flex flex-col items-center gap-2 md:w-1/3">
-                 {selectedProduct.images?.length ? (
-                   <div className="flex gap-2 flex-wrap justify-center">
-                     {selectedProduct.images.map((img, idx) => (
-                       // eslint-disable-next-line @next/next/no-img-element
-                       <img key={idx} src={img} alt={`${selectedProduct.name}-${idx}`} className="h-24 w-24 object-contain rounded-xl border bg-white shadow" />
-                     ))}
-                   </div>
-                 ) : (
-                   <div className="h-24 w-24 rounded-xl border bg-orange-50 flex items-center justify-center text-slate-400">
-                     ไม่มีรูป
-                   </div>
-                 )}
-               </div>
-
-               {/* Info */}
-               <div className="flex-1 min-w-0">
-                 <div className="flex flex-col gap-2">
-                   <h3 className="text-lg font-semibold text-orange-700">{selectedProduct.name}</h3>
-                   <div className="text-sm text-slate-600">หมวดหมู่: {selectedProduct.category || '-'}</div>
-                   <div className="text-xl text-green-700 font-extrabold">{selectedProduct.price.toLocaleString()} ฿</div>
-                 </div>
-
-                 <div className="mt-4">
-                   <div className="text-sm font-semibold text-slate-700 mb-2">รายละเอียดสินค้า</div>
-                   <div className="p-4 rounded-xl border border-orange-100 bg-orange-50 text-sm text-slate-700 leading-relaxed">
-                     {selectedProduct.description || 'ไม่มีรายละเอียด'}
-                   </div>
-                 </div>
-
-                 {selectedProduct.options && selectedProduct.options.length > 0 && (
-                   <div className="mt-4">
-                     <div className="text-sm font-semibold text-slate-700 mb-2">ตัวเลือกสินค้า</div>
-                     <div className="grid grid-cols-2 gap-3">
-                       {selectedProduct.options.map((opt, idx) => (
-                         <div key={idx} className="p-3 rounded-xl border border-orange-100 bg-orange-50 text-sm text-slate-700">
-                           <div className="font-semibold text-orange-700">{opt.name}</div>
-                           <div className="text-xs text-slate-500">{opt.values.join(',')}</div>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 )}
-               </div>
-             </div>
-           </div>
-         </div>
-       )}
-     </SectionCard>
-   )
- }
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-slate-600">หน้า {page} / {pages}</div>
+          <div className="flex items-center gap-2">
+            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-3 py-2 rounded bg-slate-100 hover:bg-slate-200">ก่อนหน้า</button>
+            <button disabled={page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="px-3 py-2 rounded bg-slate-100 hover:bg-slate-200">ถัดไป</button>
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  )
+}

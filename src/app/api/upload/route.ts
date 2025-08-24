@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-export const runtime = 'node' // ensure Node runtime for fs
+// runtime must be a statically analyzable value; Next expects 'nodejs' for Node runtime
+export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
   try {

@@ -1,370 +1,348 @@
-'use client'
+"use client"
 
 import React, { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Swal from 'sweetalert2'
-import { Store, User, Phone, Upload, X, Image } from 'lucide-react'
+import Link from 'next/link'
+import { MapPin, Phone, Mail, Store, User as UserIcon, Upload, Camera, X } from 'lucide-react'
+
+// small provinces list (same as other pages)
+const THAI_PROVINCES = [
+  'กรุงเทพมหานคร','กระบี่','กาญจนบุรี','กาฬสินธุ์','กำแพงเพชร','ขอนแก่น','จันทบุรี','ฉะเชิงเทรา',
+  'ชัยนาท','ชัยภูมิ','ชุมพร','ชลบุรี','เชียงใหม่','เชียงราย','ตรัง','ตราด','ตาก','นครนายก',
+  'นครปฐม','นครพนม','นครราชสีมา','นครศรีธรรมราช','นครสวรรค์','นนทบุรี','นราธิวาส','น่าน',
+  'บึงกาฬ','บุรีรัมย์','ปทุมธานี','ประจวบคีรีขันธ์','ปราจีนบุรี','ปัตตานี','พระนครศรีอยุธยา',
+  'พังงา','พัทลุง','พิจิตร','พิษณุโลก','เพชรบุรี','เพชรบูรณ์','แพร่','พะเยา','ภูเก็ต','มหาสารคาม',
+  'มุกดาหาร','แม่ฮ่องสอน','ยโสธร','ยะลา','ร้อยเอ็ด','ระนอง','ระยอง','ราชบุรี','ลพบุรี','ลำปาง',
+  'ลำพูน','เลย','ศรีสะเกษ','สกลนคร','สงขลา','สตูล','สมุทรปราการ','สมุทรสงคราม','สมุทรสาคร',
+  'สระแก้ว','สระบุรี','สิงห์บุรี','สุโขทัย','สุพรรณบุรี','สุราษฎร์ธานี','สุรินทร์','หนองคาย',
+  'หนองบัวลำภู','อำนาจเจริญ','อุดรธานี','อุตรดิตถ์','อุทัยธานี','อ่างทอง','อุบลราชธานี'
+]
 
 export default function SellerCreatePage() {
   const router = useRouter()
-  const search = useSearchParams()
-  const usernameFromQuery = search?.get('username') || ''
-
-  const [username, setUsername] = useState(usernameFromQuery)
+  const [username, setUsername] = useState<string | null>(null)
   const [shopName, setShopName] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [province, setProvince] = useState('')
   const [address, setAddress] = useState('')
-  const [profileImage, setProfileImage] = useState('') // URL fallback
-  const [profileImageFile, setProfileImageFile] = useState<File | null>(null) // actual file
-  const [imagePreview, setImagePreview] = useState<string>('') // preview URL
+  const [shopImage, setShopImage] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
 
-  // Handle file selection and preview
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setProfileImageFile(file)
-      const previewUrl = URL.createObjectURL(file)
-      setImagePreview(previewUrl)
-    }
-  }
-
-  const removeImage = () => {
-    setProfileImageFile(null)
-    setImagePreview('')
-    setProfileImage('')
-  }
-
-  // prefill from MongoDB via API (fallback to localStorage)
-  useEffect(()=> {
-    if (usernameFromQuery) setUsername(usernameFromQuery)
-
-    const tryFillFromApi = async (uname?: string) => {
-      if (!uname) return
+  useEffect(() => {
+    try {
+      const u = localStorage.getItem('sellerUser')
+      if (!u) {
+        Swal.fire({ icon: 'info', title: 'โปรดเข้าสู่ระบบ', text: 'กรุณาเข้าสู่ระบบผู้ขายก่อนเปิดร้าน', timer: 1800, showConfirmButton: false })
+        router.push('/seller/auth')
+        return
+      }
+      let uname = u
       try {
-        const res = await fetch(`/api/seller-info?username=${encodeURIComponent(uname)}`)
-        if (!res.ok) return
-        const p = await res.json().catch(()=>null)
-        if (!p) return
-        setUsername(prev => prev || p.username || '')
+        let cur = u
+        for (let i = 0; i < 5; i++) {
+          try { const next = decodeURIComponent(cur); if (next === cur) break; cur = next } catch { break }
+        }
+        uname = cur
+      } catch {}
+      setUsername(uname)
+      const profileRaw = localStorage.getItem('sellerProfile')
+      if (profileRaw) {
+        const p = JSON.parse(profileRaw)
         setShopName(p.shopName || '')
         setFullName(p.fullName || '')
         setPhone(p.phone || '')
         setEmail(p.email || '')
         setProvince(p.province || '')
-        setProfileImage(p.image || '')
-        if (p.image) setImagePreview(p.image)
         setAddress(p.address || '')
-      } catch {
-        // ignore API errors here; fallback to localStorage below
+        setShopImage(p.shopImage || '')
       }
+    } catch (err) {
+      // ignore
+    }
+  }, [router])
+
+  const handleImageUpload = async (file: File) => {
+    if (!file) return
+    
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire({ icon: 'warning', title: 'ไฟล์ใหญ่เกินไป', text: 'กรุณาเลือกรูปภาพที่มีขนาดไม่เกิน 5MB' })
+      return
     }
 
-    // try API first
-    (async () => {
-      if (usernameFromQuery) {
-        await tryFillFromApi(usernameFromQuery)
-      } else {
-        // try to read username from localStorage and attempt API fetch
-        const stored = typeof window !== 'undefined' ? localStorage.getItem('sellerUser') : null
-        if (stored) {
-          setUsername(stored)
-          await tryFillFromApi(stored)
-        }
-      }
-
-      // fallback: if API didn't populate fields, use any saved registration profile
-      try {
-        const raw = typeof window !== 'undefined' ? localStorage.getItem('sellerProfile') : null
-        if (raw) {
-          const p = JSON.parse(raw)
-          setUsername(prev => prev || p.username || '')
-          setShopName(prev => prev || p.shopName || '')
-          setFullName(prev => prev || p.fullName || '')
-          setPhone(prev => prev || p.phone || '')
-          setEmail(prev => prev || p.email || '')
-          setProvince(prev => prev || p.province || '')
-          setProfileImage(prev => prev || p.image || '')
-          setAddress(prev => prev || p.address || '')
-        }
-      } catch { /* ignore */ }
-    })()
-  }, [usernameFromQuery])
-
-  const handleCreate = async (e?: React.FormEvent) => {
-    e?.preventDefault()
-    if (!username?.trim() || !shopName.trim() || !fullName.trim() || !phone.trim()) {
-      return Swal.fire({ icon: 'warning', title: 'กรุณากรอกข้อมูลที่จำเป็น: username, ชื่อร้าน, ชื่อ-นามสกุล, เบอร์โทร' })
-    }
-    setLoading(true)
+    setUploadingImage(true)
     try {
-      // If user selected a file, upload it first and use returned URL
-      let imageUrl: string | undefined = profileImage?.trim() || undefined
-      if (profileImageFile) {
-        setUploadingImage(true)
-        const fd = new FormData()
-        fd.append('file', profileImageFile)
-        const up = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (!up.ok) throw new Error('upload failed')
-        const upj = await up.json().catch(()=>({}))
-        imageUrl = Array.isArray(upj?.urls) && upj.urls[0] ? upj.urls[0] : imageUrl
-        setUploadingImage(false)
-      }
+      const formData = new FormData()
+      formData.append('file', file)
       
-      const payload = {
-        username: username.trim(),
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        shopName: shopName.trim(),
-        image: imageUrl,
-        email: email.trim() || undefined,
-        province: province.trim() || undefined,
-        address: address.trim() || undefined,
-      }
-      const res = await fetch('/api/seller-info', {
+      const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: formData
       })
-      if (!res.ok) {
-        const err = await res.json().catch(()=>({}))
-        throw new Error(err?.message || 'สร้างร้านค้าไม่สำเร็จ')
-      }
-      const created = await res.json().catch(()=>({}))
-      // persist sellerUser so admin pages work
-      localStorage.setItem('sellerUser', username.trim())
-      try { localStorage.removeItem('sellerProfile') } catch {}
-      Swal.fire({ icon: 'success', title: 'สร้างร้านค้าสำเร็จ', timer: 1200, showConfirmButton: false })
-      router.push('/seller/adminSeller')
-    } catch (err:any) {
-      Swal.fire({ icon: 'error', title: 'ไม่สามารถสร้างร้านค้าได้', text: err?.message || '' })
+      
+      if (!res.ok) throw new Error('Upload failed')
+      
+      const data = await res.json()
+      setShopImage(data.url)
+      setImageFile(file)
+      
+      Swal.fire({ 
+        icon: 'success', 
+        title: 'อัปโหลดสำเร็จ', 
+        text: 'รูปภาพร้านของคุณถูกอัปโหลดแล้ว',
+        timer: 1500, 
+        showConfirmButton: false 
+      })
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'อัปโหลดไม่สำเร็จ', text: 'เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ' })
     } finally {
-      setLoading(false)
       setUploadingImage(false)
     }
   }
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleImageUpload(file)
+    }
+  }
+
+  const removeImage = () => {
+    setShopImage('')
+    setImageFile(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!username) return
+    if (!shopName.trim() || !fullName.trim() || !phone.trim()) {
+      Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอก ชื่อร้าน, ชื่อ-นามสกุล, และเบอร์โทร' })
+      return
+    }
+    setLoading(true)
+    try {
+      const payload = { 
+        username, 
+        shopName: shopName.trim(), 
+        fullName: fullName.trim(), 
+        phone: phone.trim(), 
+        email: email.trim() || undefined, 
+        province: province || undefined, 
+        address: address || undefined,
+        shopImage: shopImage || undefined
+      }
+      const res = await fetch('/api/seller-info', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        Swal.fire({ icon: 'error', title: 'ไม่สามารถบันทึกได้', text: err?.error || 'เกิดข้อผิดพลาด' })
+        return
+      }
+      // persist profile locally
+      try { 
+        localStorage.setItem('sellerProfile', JSON.stringify({ 
+          username, 
+          shopName: payload.shopName, 
+          fullName: payload.fullName, 
+          phone: payload.phone, 
+          email: payload.email || '', 
+          province: payload.province || '', 
+          address: payload.address || '',
+          shopImage: payload.shopImage || ''
+        })) 
+      } catch {}
+      Swal.fire({ icon: 'success', title: 'เปิดร้านเรียบร้อย', timer: 1200, showConfirmButton: false })
+      router.push('/seller/manage')
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'ข้อผิดพลาด', text: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+      <main className="max-w-4xl mx-auto px-4 py-12">
+        {/* Header Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center text-white shadow-lg">
-              <Store className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-orange-800">สร้างร้านค้าใหม่</h1>
-              <p className="text-slate-600">เริ่มต้นการขายออนไลน์ของคุณ</p>
-            </div>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
+            <Store className="w-8 h-8 text-orange-600" />
           </div>
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">สมัครเปิดร้าน</h1>
+          <p className="text-slate-600 max-w-md mx-auto">กรอกข้อมูลร้านของคุณเพื่อเริ่มขายบนแพลตฟอร์มและเข้าถึงลูกค้าหลายพันคน</p>
         </div>
 
-        <form onSubmit={handleCreate} className="bg-white rounded-3xl shadow-xl border border-orange-100 overflow-hidden">
-          {/* Progress bar */}
-          <div className="h-2 bg-gradient-to-r from-orange-500 to-amber-400"></div>
-          
-          <div className="p-8">
-            <div className="grid lg:grid-cols-3 gap-8">
-              {/* Left: Profile Image Upload */}
-              <div className="lg:col-span-1">
-                <div className="sticky top-8">
-                  <h3 className="text-lg font-semibold text-orange-800 mb-4">รูปโปรไฟล์ร้าน</h3>
-                  
-                  <div className="relative">
-                    {/* Image Preview */}
-                    <div className="w-full aspect-square rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50/50 overflow-hidden mb-4">
-                      {imagePreview ? (
-                        <div className="relative w-full h-full">
-                          <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={removeImage}
-                            className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow-lg"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-orange-100/50 transition">
-                          <Upload className="w-12 h-12 text-orange-400 mb-2" />
-                          <span className="text-orange-700 font-medium">อัปโหลดรูปร้าน</span>
-                          <span className="text-xs text-slate-500 mt-1">PNG, JPG (แนะนำ 1:1)</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageChange}
-                            className="hidden"
-                          />
-                        </label>
-                      )}
-                    </div>
-
-                    {/* URL Input Alternative */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700">หรือใส่ URL รูปภาพ</label>
-                      <input
-                        value={profileImage}
-                        onChange={(e) => {
-                          setProfileImage(e.target.value)
-                          if (e.target.value && !profileImageFile) {
-                            setImagePreview(e.target.value)
-                          }
-                        }}
-                        placeholder="https://example.com/image.jpg"
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                      />
-                    </div>
-
-                    {uploadingImage && (
-                      <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-2xl">
-                        <div className="text-center">
-                          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <span className="text-sm text-orange-700">กำลังอัปโหลด...</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Form Fields */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Required Fields */}
-                <div>
-                  <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                    <span className="w-2 h-6 bg-gradient-to-b from-orange-500 to-amber-400 rounded-full"></span>
-                    ข้อมูลพื้นฐาน
-                  </h3>
-                  
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">ชื่อบัญชี *</label>
-                      <input
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="username"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">ชื่อร้านค้า *</label>
-                      <input
-                        value={shopName}
-                        onChange={(e) => setShopName(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="เช่น TH-THAI Shop"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">ชื่อ-นามสกุล *</label>
-                      <input
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="ชื่อ-นามสกุลจริง"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">เบอร์โทร *</label>
-                      <input
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="08xxxxxxxx"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Optional Fields */}
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                    <span className="w-2 h-6 bg-gradient-to-b from-slate-400 to-slate-300 rounded-full"></span>
-                    ข้อมูลเพิ่มเติม
-                  </h3>
-                  
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">อีเมล</label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="you@example.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">จังหวัด</label>
-                      <input
-                        value={province}
-                        onChange={(e) => setProvince(e.target.value)}
-                        className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none"
-                        placeholder="เช่น กรุงเทพมหานคร"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">ที่อยู่</label>
-                    <textarea
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      rows={3}
-                      className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-300 outline-none resize-none"
-                      placeholder="ที่อยู่ร้านค้า"
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Shop Image Upload Section */}
+          <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-8 py-6">
+            <h2 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Camera className="w-5 h-5" />
+              รูปภาพร้าน
+            </h2>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="relative">
+                {shopImage ? (
+                  <div className="relative group">
+                    <img 
+                      src={shopImage} 
+                      alt="Shop" 
+                      className="w-32 h-32 object-cover rounded-xl border-4 border-white shadow-lg"
                     />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-4 pt-6 border-t border-orange-100">
-                  <button
-                    type="submit"
-                    disabled={loading || uploadingImage}
-                    className="flex-1 h-12 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 text-white font-semibold shadow-lg hover:from-orange-700 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        กำลังสร้างร้าน...
-                      </>
-                    ) : (
-                      <>
-                        <Store className="w-5 h-5" />
-                        สร้างร้านค้า
-                      </>
-                    )}
-                  </button>
-                  
-                  <button
-                    type="button"
-                    onClick={() => router.back()}
-                    className="px-8 h-12 rounded-xl border border-orange-200 text-orange-700 font-semibold hover:bg-orange-50 transition-all"
-                  >
-                    ยกเลิก
-                  </button>
-                </div>
+                ) : (
+                  <div className="w-32 h-32 bg-white/20 border-2 border-dashed border-white rounded-xl flex flex-col items-center justify-center text-white">
+                    <Upload className="w-8 h-8 mb-2" />
+                    <span className="text-sm">ไม่มีรูป</span>
+                  </div>
+                )}
               </div>
+              
+              <div className="flex-1 text-center sm:text-left">
+                <p className="text-white/90 text-sm mb-3">
+                  อัปโหลดรูปภาพร้านเพื่อสร้างความน่าเชื่อถือให้กับลูกค้า
+                </p>
+                <label className="inline-flex items-center gap-2 px-4 py-2 bg-white text-orange-600 rounded-lg font-medium cursor-pointer hover:bg-orange-50 transition-colors">
+                  <Upload className="w-4 h-4" />
+                  {uploadingImage ? 'กำลังอัปโหลด...' : 'เลือกรูปภาพ'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                    disabled={uploadingImage}
+                  />
+                </label>
+                <p className="text-white/70 text-xs mt-2">รองรับ JPG, PNG ขนาดไม่เกิน 5MB</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Form Content */}
+          <div className="p-8 space-y-6">
+            {/* Shop Name */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                <Store className="w-4 h-4 text-orange-600" />
+                ชื่อร้าน *
+              </label>
+              <input 
+                value={shopName} 
+                onChange={(e)=>setShopName(e.target.value)} 
+                className="w-full h-12 rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                placeholder="กรอกชื่อร้านของคุณ"
+              />
+            </div>
+
+            {/* Full Name */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                <UserIcon className="w-4 h-4 text-orange-600" />
+                ชื่อ-นามสกุล *
+              </label>
+              <input 
+                value={fullName} 
+                onChange={(e)=>setFullName(e.target.value)} 
+                className="w-full h-12 rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                placeholder="กรอกชื่อ-นามสกุลของคุณ"
+              />
+            </div>
+
+            {/* Contact Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-orange-600" />
+                  เบอร์โทร *
+                </label>
+                <input 
+                  value={phone} 
+                  onChange={(e)=>setPhone(e.target.value)} 
+                  className="w-full h-12 rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                  placeholder="08X-XXX-XXXX"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-400" />
+                  อีเมล
+                </label>
+                <input 
+                  value={email} 
+                  onChange={(e)=>setEmail(e.target.value)} 
+                  className="w-full h-12 rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                  placeholder="อีเมลของคุณ (ไม่บังคับ)"
+                />
+              </div>
+            </div>
+
+            {/* Location */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-orange-600" />
+                จังหวัด
+              </label>
+              <select 
+                value={province} 
+                onChange={(e)=>setProvince(e.target.value)} 
+                className="w-full h-12 rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white"
+              >
+                <option value="">เลือกจังหวัด</option>
+                {THAI_PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-slate-400" />
+                ที่อยู่
+              </label>
+              <textarea 
+                value={address} 
+                onChange={(e)=>setAddress(e.target.value)} 
+                className="w-full rounded-xl border border-slate-300 p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
+                rows={3}
+                placeholder="ที่อยู่ของร้าน (ไม่บังคับ)"
+              />
+            </div>
+
+            {/* Submit Buttons */}
+            <div className="flex items-center gap-4 justify-end pt-4 border-t border-slate-200">
+              <Link 
+                href="/seller/manage" 
+                className="px-6 py-3 text-slate-600 hover:text-slate-800 font-medium transition-colors"
+              >
+                ยกเลิก
+              </Link>
+              <button 
+                type="submit" 
+                disabled={loading || uploadingImage} 
+                className="px-8 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {loading ? 'กำลังบันทึก...' : 'เปิดร้าน'}
+              </button>
             </div>
           </div>
         </form>
 
-        <div className="text-center mt-6">
+        {/* Footer Note */}
+        <div className="text-center mt-8">
           <p className="text-sm text-slate-500">
-            หลังจากสร้างร้านแล้ว คุณสามารถเข้าไปจัดการสินค้าและคำสั่งซื้อได้ทันที
+            การสมัครเปิดร้านจะต้องผ่านการตรวจสอบก่อนเริ่มขาย
           </p>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

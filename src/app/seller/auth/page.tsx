@@ -11,6 +11,19 @@ import {
 
 import { termsText } from '@/constants/termsText'
 
+// รายชื่อ 77 จังหวัดของประเทศไทย
+const THAI_PROVINCES = [
+  'กรุงเทพมหานคร','กระบี่','กาญจนบุรี','กาฬสินธุ์','กำแพงเพชร','ขอนแก่น','จันทบุรี','ฉะเชิงเทรา',
+  'ชัยนาท','ชัยภูมิ','ชุมพร','ชลบุรี','เชียงใหม่','เชียงราย','ตรัง','ตราด','ตาก','นครนายก',
+  'นครปฐม','นครพนม','นครราชสีมา','นครศรีธรรมราช','นครสวรรค์','นนทบุรี','นราธิวาส','น่าน',
+  'บึงกาฬ','บุรีรัมย์','ปทุมธานี','ประจวบคีรีขันธ์','ปราจีนบุรี','ปัตตานี','พระนครศรีอยุธยา',
+  'พังงา','พัทลุง','พิจิตร','พิษณุโลก','เพชรบุรี','เพชรบูรณ์','แพร่','พะเยา','ภูเก็ต','มหาสารคาม',
+  'มุกดาหาร','แม่ฮ่องสอน','ยโสธร','ยะลา','ร้อยเอ็ด','ระนอง','ระยอง','ราชบุรี','ลพบุรี','ลำปาง',
+  'ลำพูน','เลย','ศรีสะเกษ','สกลนคร','สงขลา','สตูล','สมุทรปราการ','สมุทรสงคราม','สมุทรสาคร',
+  'สระแก้ว','สระบุรี','สิงห์บุรี','สุโขทัย','สุพรรณบุรี','สุราษฎร์ธานี','สุรินทร์','หนองคาย',
+  'หนองบัวลำภู','อำนาจเจริญ','อุดรธานี','อุตรดิตถ์','อุทัยธานี','อ่างทอง','อุบลราชธานี'
+]
+
 export default function SellerAuthPage() {
   const router = useRouter()
   const [sellerUser, setSellerUser] = useState('')
@@ -48,7 +61,14 @@ export default function SellerAuthPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        setAuthError(err?.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+  const msg = err?.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+  setAuthError(msg)
+  Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบล้มเหลว', text: msg })
+        // If API says user not found, guide user to create a shop/register
+        if ((err?.message || '').includes('ไม่พบ')) {
+          router.push('/seller/create')
+          return
+        }
       } else {
         const data = await res.json().catch(() => ({}))
         // store username and optional token
@@ -56,10 +76,17 @@ export default function SellerAuthPage() {
         if (data?.token) localStorage.setItem('sellerToken', data.token)
         setSellerUser(''); setSellerPass('')
         Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ', timer: 1200, showConfirmButton: false })
-        router.push('/seller/manage')
+        // If the account has no shop/profile yet, redirect to create-shop page
+        if (data?.needsProfile) {
+          router.push('/seller/create')
+        } else {
+          router.push('/seller/manage')
+        }
       }
     } catch {
-      setAuthError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
+  const msg = 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์'
+  setAuthError(msg)
+  Swal.fire({ icon: 'error', title: 'ข้อผิดพลาด', text: msg })
     } finally {
       setLoading(false)
     }
@@ -78,11 +105,15 @@ export default function SellerAuthPage() {
 
   const validateStep2 = () => {
     if (!fullName.trim() || !phone.trim() || !shopName.trim()) {
-      setAuthError('กรุณากรอก ชื่อ-นามสกุล / เบอร์โทร / ชื่อร้าน ให้ครบ')
+  const msg = 'กรุณากรอก ชื่อ-นามสกุล / เบอร์โทร / ชื่อร้าน ให้ครบ'
+  setAuthError(msg)
+  Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: msg })
       return false
     }
     if (!acceptTerms) {
-      setAuthError('กรุณายอมรับข้อตกลงการใช้งาน')
+  const msg = 'กรุณายอมรับข้อตกลงการใช้งาน'
+  setAuthError(msg)
+  Swal.fire({ icon: 'warning', title: 'ยอมรับข้อตกลง', text: msg })
       return false
     }
     setAuthError('')
@@ -118,8 +149,10 @@ export default function SellerAuthPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        setAuthError(err?.message || 'สมัครไม่สำเร็จ')
-        return
+    const msg = err?.message || 'สมัครไม่สำเร็จ'
+    setAuthError(msg)
+    Swal.fire({ icon: 'error', title: 'สมัครล้มเหลว', text: msg })
+    return
       }
 
       const data = await res.json().catch(() => ({}))
@@ -147,8 +180,10 @@ export default function SellerAuthPage() {
       Swal.fire({ icon: 'success', title: 'สมัครสำเร็จ', timer: 1200, showConfirmButton: false })
       router.push('/seller/manage')
     } catch (error) {
-      setAuthError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
-      console.error('Register error:', error)
+    const msg = 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์'
+    setAuthError(msg)
+    Swal.fire({ icon: 'error', title: 'ข้อผิดพลาด', text: msg })
+    console.error('Register error:', error)
     } finally {
       setLoading(false)
     }
@@ -477,14 +512,21 @@ export default function SellerAuthPage() {
                             icon={<Calendar className="w-4 h-4" />}
                             required={false}
                           />
-                          <Input
-                            label="จังหวัด"
-                            value={province}
-                            onChange={setProvince}
-                            placeholder="กรอกจังหวัด"
-                            icon={<MapPin className="w-4 h-4" />}
-                            required={false}
-                          />
+                          <div>
+                            <label className="block text-sm font-semibold text-orange-800/90 mb-1">จังหวัด</label>
+                            <div>
+                              <select
+                                value={province}
+                                onChange={(e) => setProvince(e.target.value)}
+                                className="w-full h-11 rounded-xl border bg-white/80 backdrop-blur px-3 text-sm outline-none border-orange-200 focus:ring-2 focus:ring-orange-300 focus:border-orange-300"
+                              >
+                                <option value="">เลือกจังหวัด</option>
+                                {THAI_PROVINCES.map((p) => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
                           <Textarea
                             label="ที่อยู่"
                             value={address}
