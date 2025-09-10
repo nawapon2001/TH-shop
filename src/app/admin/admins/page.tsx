@@ -5,7 +5,29 @@ import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
-/*
+// Simple symmetric encryption using Web Crypto API for demo purposes.
+const ENCRYPTION_KEY = 'demo-admin-key' // In real scenarios, do not hardcode.
+function simpleEncrypt(text: string, key = ENCRYPTION_KEY): string {
+  // Very basic, insecure for real use. Substitute with proper crypto in production!
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const keyBytes = encoder.encode(key);
+  // XOR each byte
+  let result = '';
+  for (let i = 0; i < data.length; ++i) {
+    result += ('00' + (data[i] ^ keyBytes[i % keyBytes.length]).toString(16)).slice(-2);
+  }
+  return result;
+}
+function simpleDecrypt(hex: string, key = ENCRYPTION_KEY): string {
+  const keyBytes = new TextEncoder().encode(key);
+  let result = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const byte = parseInt(hex.substr(i, 2), 16);
+    result += String.fromCharCode(byte ^ keyBytes[(i / 2) % keyBytes.length]);
+  }
+  return result;
+}
   New admin management page (local/demo)
   - Reads/writes admin list using localStorage key 'adminUsers'
   - Minimal UI: add user, list users, remove user (prevent remove last)
@@ -46,7 +68,7 @@ export default function AdminsPage() {
     const list = loadAdmins()
     if (list.length === 0) {
       // seed a safe default if none (optional)
-      const seed = [{ username: 'admin', password: 'admin123' }]
+      const seed = [{ username: 'admin', password: simpleEncrypt('admin123') }]
       saveAdmins(seed)
       setAdmins(seed)
     } else {
@@ -61,7 +83,7 @@ export default function AdminsPage() {
     if (!u || !p) { setError('กรุณากรอกชื่อและรหัสผ่าน'); return }
     if (u.length < 4 || p.length < 4) { setError('ความยาวอย่างน้อย 4 ตัวอักษร'); return }
     if (admins.some(a => a.username.toLowerCase() === u.toLowerCase())) { setError('ชื่อผู้ใช้ซ้ำ'); return }
-    const next = [...admins, { username: u, password: p }]
+    const next = [...admins, { username: u, password: simpleEncrypt(p) }]
     saveAdmins(next); setAdmins(next); setUsername(''); setPassword('')
     Swal.fire({ icon: 'success', title: 'เพิ่มผู้ดูแลแล้ว', timer: 1000, showConfirmButton: false })
   }
