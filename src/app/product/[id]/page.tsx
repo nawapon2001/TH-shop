@@ -205,7 +205,17 @@ export default function ProductDetailPage() {
     return product.image ? [product.image] : []
   }, [product])
 
-  const mainImage = images[mainIndex] || 'https://via.placeholder.com/600x600?text=No+Image'
+    // normalize image src: ensure leading slash for local uploads and allow data/http URLs
+    const normalizeSrc = (src?: string) => {
+      try {
+        const s = String(src || '').trim()
+        if (!s) return ''
+        if (s.startsWith('http') || s.startsWith('data:') || s.startsWith('/')) return s
+        return `/${s.replace(/^\/?/, '')}`
+      } catch { return String(src || '') }
+    }
+
+    const mainImage = normalizeSrc(images[mainIndex]) || 'https://via.placeholder.com/600x600?text=No+Image'
 
   // Price
   const discountedPrice = useMemo(() => {
@@ -357,7 +367,7 @@ export default function ProductDetailPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={idx}
-                    src={img}
+                    src={normalizeSrc(img)}
                     alt={`thumb-${idx}`}
                     className={`h-16 w-full object-cover rounded-lg border cursor-pointer transition ring-2 ${
                       mainIndex === idx ? 'ring-orange-500' : 'ring-transparent'
@@ -417,7 +427,7 @@ export default function ProductDetailPage() {
               <div className="mt-4 p-4 border rounded-lg bg-white">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded overflow-hidden bg-orange-50 border">
-                    {sellerInfo.image ? <img src={sellerInfo.image} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-3" />}
+                    {sellerInfo.image ? <img src={normalizeSrc(sellerInfo.image)} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-3" />}
                   </div>
                   <div>
                     <div className="font-semibold">{sellerInfo.shopName || sellerInfo.username}</div>

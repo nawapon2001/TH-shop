@@ -16,7 +16,7 @@ import {
 
 /* ---------- Types ---------- */
 type ProductOption = { name: string; values: string[] }
-type Product = { _id: string; name: string; price: number; image?: string; images?: string[]; description?: string; category?: string; options?: ProductOption[] }
+type Product = { _id: string; name: string; price: number | string; image?: string; images?: string[]; description?: string; category?: string; options?: ProductOption[]; username?: string; seller?: boolean }
 type Banner = { _id: string; url?: string; image?: string; isSmall?: boolean }
 
 type Category = { name: string; icon?: string }
@@ -378,8 +378,8 @@ const getStatusStyle = (status: OrderStatus) => {
 }
 
 /* ---------- หน้า Admin ---------- */
-// safe clipboard copy with fallback
-export const copyToClipboard = async (text: string) => {
+// safe clipboard copy with fallback (local helper)
+const copyToClipboard = async (text: string) => {
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
@@ -484,7 +484,32 @@ export default function AdminPage() {
   const categoryCount = categories.length
 
   /* ---------- API helpers ---------- */
-  const fetchProducts = async () => { try { const r = await fetch('/api/products'); const d = await r.json(); setProducts(Array.isArray(d)?d:[]) } catch { setProducts([]) } }
+  // fetch both central products and marketplace (seller) products, merge into one list
+  const fetchProducts = async () => {
+    try {
+      const [r1, r2] = await Promise.all([fetch('/api/products'), fetch('/api/seller-products')])
+      const d1 = await r1.json().catch(()=>[])
+      const d2 = await r2.json().catch(()=>[])
+
+      const central = Array.isArray(d1) ? d1.map((p: any) => ({ ...p, seller: false })) : []
+      const sellers = Array.isArray(d2) ? d2.map((s: any) => ({
+        _id: s._id || s.id || '',
+        name: s.name || s.shopName || s.desc || 'สินค้าจากร้านค้า',
+        price: s.price != null ? (typeof s.price === 'string' ? Number(s.price) || s.price : s.price) : 0,
+        image: s.image || '',
+        images: s.images || [],
+        description: s.desc || s.description || '',
+        category: s.category || `ร้าน: ${s.username || ''}`,
+        username: s.username,
+        seller: true
+      })) : []
+
+      setProducts([...central, ...sellers])
+    } catch (err) {
+      console.error('fetchProducts error', err)
+      setProducts([])
+    }
+  }
   const fetchBanners = async () => { try { const r = await fetch('/api/banners', { cache: 'no-store' }); const d = await r.json(); setBanners(Array.isArray(d)?d:[]) } catch { setBanners([]) } }
   const fetchCategories = async () => { try {
     const r = await fetch('/api/categories'); const d = await r.json()
@@ -635,7 +660,14 @@ export default function AdminPage() {
     const result = await Swal.fire({ title: 'ยืนยันการลบสินค้า?', icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' })
     if (!result.isConfirmed) return
     try {
-      const res = await fetch(`/api/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      // determine whether this product is a seller product
+      const prod = products.find(p => p._id === id)
+      let res: Response
+      if (prod && prod.seller) {
+        res = await fetch(`/api/seller-products?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      } else {
+        res = await fetch(`/api/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      }
       if (!res.ok) throw new Error()
       await fetchProducts()
       Swal.fire({ icon: 'success', title: 'ลบสินค้าแล้ว', timer: 1200, showConfirmButton: false })
@@ -1606,6 +1638,7 @@ const ProductsList = ({ products, onRefresh, onDelete }: ProductsListProps) => {
                 <div className="font-semibold text-slate-800 line-clamp-2">{p.name}</div>
                 <div className="text-sm text-slate-500">฿{Number(p.price).toLocaleString()}</div>
                 <div className="text-xs text-slate-400 mt-2">หมวดหมู่: {p.category || '-'}</div>
+                {p.seller && <div className="text-xs text-amber-700 mt-1">จากร้าน: {p.username || 'ไม่ระบุ'}</div>}
               </div>
               <div className="flex flex-col gap-2">
                 <a href={`/product/${p._id}`} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-full bg-slate-100 text-slate-700 text-sm">ดู</a>

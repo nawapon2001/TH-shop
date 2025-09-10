@@ -26,7 +26,7 @@ function normalizeOptions(raw: any): ProductOption[] {
   return []
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: any) {
   try {
     const { id } = params
     await connectToDatabase()
@@ -44,7 +44,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: any) {
   try {
     await connectToDatabase()
     const { id } = params

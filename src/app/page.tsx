@@ -196,16 +196,29 @@ function ProductCard({
       <div className="relative aspect-square bg-gradient-to-br from-slate-50 to-slate-100 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={
-            Array.isArray(product.images) && product.images.length
-              ? product.images[0]
-              : product.image || 'https://via.placeholder.com/400x400?text=No+Image'
-          }
-          alt={product.name}
-          loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          // normalize source: use absolute/local path when needed
+          src={(() => {
+            try {
+              const srcCandidate = Array.isArray(product.images) && product.images.length
+                ? product.images[0]
+                : product.image || ''
+              if (!srcCandidate) return '/file.svg'
+              if (srcCandidate.startsWith('http') || srcCandidate.startsWith('data:') || srcCandidate.startsWith('/')) return srcCandidate
+              return `/${srcCandidate.replace(/^\/?/, '')}`
+            } catch { return '/file.svg' }
+          })()}
+           alt={product.name}
+           loading="lazy"
+           className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           onError={(e) => {
-            ;(e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400?text=No+Image'
+            try {
+              const img = e.target as HTMLImageElement
+              if (!img) return
+              // avoid resetting repeatedly
+              if (img.dataset.fallback === 'true') return
+              img.dataset.fallback = 'true'
+              img.src = '/file.svg'
+            } catch {}
           }}
         />
 
@@ -381,7 +394,6 @@ function ProductPageInner() {
   const [bannerImages, setBannerImages] = useState<BannerItem[]>([])
   const [cart, setCart] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [sellers, setSellers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingCats, setLoadingCats] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>()
@@ -489,20 +501,6 @@ function ProductPageInner() {
     fetchCategories()
   }, [])
 
-  /* Fetch sellers for storefront listing */
-  useEffect(() => {
-    const fetchSellers = async () => {
-      try {
-        const res = await fetch('/api/sellers')
-        if (!res.ok) return setSellers([])
-        const d = await res.json().catch(() => [])
-        setSellers(Array.isArray(d) ? d : [])
-      } catch {
-        setSellers([])
-      }
-    }
-    fetchSellers()
-  }, [])
 
   /* Load cart via CartManager and keep in sync via storage events */
   useEffect(() => {
@@ -720,35 +718,7 @@ function ProductPageInner() {
           </motion.div>
         )}
 
-        {/* Sellers storefront */}
-        {sellers.length > 0 && (
-          <section className="mt-12 mb-24">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-1 h-8 bg-gradient-to-b from-orange-500 to-red-500 rounded-full" />
-                <h2 className="text-2xl font-bold text-slate-800">ร้านค้าแนะนำ</h2>
-                <p className="text-sm text-slate-500">เยี่ยมชมร้านค้าของผู้ขายในระบบ</p>
-              </div>
-              <div className="text-sm text-slate-500">{sellers.length} ร้าน</div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {sellers.map((s) => (
-                <Link key={s.username || s._id} href={`/seller/${encodeURIComponent(s.username || s._id)}`} className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-lg transition">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-orange-50 flex items-center justify-center border border-orange-100">
-                      {s.image ? <img src={s.image} alt={s.shopName} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500" />}
-                    </div>
-                    <div className="flex-1 text-sm">
-                      <div className="font-semibold text-slate-800">{s.shopName || s.username}</div>
-                      <div className="text-xs text-slate-500">{s.fullName || ''}</div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+  {/* Sellers storefront removed */}
       </main>
 
       {/* Enhanced floating cart */}
@@ -767,4 +737,3 @@ function ProductPageInner() {
     </div>
   )
 }
-        

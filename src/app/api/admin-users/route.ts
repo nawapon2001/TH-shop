@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
-const UserModelPath = '@/models/User'
+import User from '@/models/User'
 
 export async function GET() {
   try {
     await connectToDatabase()
-    const User = (await import(UserModelPath)).default
-    const users = await User.find({}).select('-__v -password').lean()
+  const users = await User.find({}).select('-__v -password').lean()
     return NextResponse.json(Array.isArray(users) ? users : [])
   } catch (err) {
     console.error('GET /api/admin-users error', err)
@@ -21,8 +20,7 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url)
     const email = url.searchParams.get('email')
     if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
-    const User = (await import(UserModelPath)).default
-    await User.deleteOne({ email })
+  await User.deleteOne({ email })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/admin-users error', err)
@@ -36,9 +34,8 @@ export async function PATCH(req: Request) {
     await connectToDatabase()
     const body = await req.json().catch(()=>null)
     if (!body || !body.email || !body.password) return NextResponse.json({ error: 'email and password required' }, { status: 400 })
-    const User = (await import(UserModelPath)).default
-    // update password directly (keeps existing plain/hash behavior)
-    await User.updateOne({ email: body.email }, { $set: { password: body.password } })
+  // update password directly (keeps existing plain/hash behavior)
+  await User.updateOne({ email: body.email }, { $set: { password: body.password } })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('PATCH /api/admin-users error', err)

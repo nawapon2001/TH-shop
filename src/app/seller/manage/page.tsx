@@ -1,6 +1,11 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
+
+// shared product option type used by OptionBuilder and product forms
+type ProductOption = { name: string; values: string[] }
+
+const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 // seller manage uses a dedicated seller layout — do not include the main site Header
@@ -307,28 +312,77 @@ export default function SellerManagePage() {
   const [pPrice, setPPrice] = useState<number|''>('')
   const [pDesc, setPDesc] = useState('')
   const [pCategory, setPCategory] = useState('')
-  const [pImageFile, setPImageFile] = useState<File|null>(null)
+  // support multiple images
+  const [pImageFiles, setPImageFiles] = useState<File[]>([])
+  // preview URLs for selected image files
+  const [pImagePreviews, setPImagePreviews] = useState<string[]>([])
+  const [previewIndex, setPreviewIndex] = useState(0)
+  // product options like admin
+  const [pOptions, setPOptions] = useState<ProductOption[]>([])
+  const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
+  function sanitizeOptions(raw: any): ProductOption[] {
+    try {
+      const parsed: any = Array.isArray(raw) ? raw : JSON.parse(String(raw || '[]'))
+      const data: any[] = Array.isArray(parsed) ? parsed : []
+      const seen = new Set<string>()
+      const list = data
+        .map((o: any) => {
+          const name = ensureString(o?.name)
+          const valuesRaw = Array.isArray(o?.values) ? o.values : []
+          const values = Array.from(new Set(valuesRaw.map((v: any) => ensureString(v)).filter(Boolean)))
+          return { name, values }
+        })
+        .filter((o: any) => o.name && Array.isArray(o.values) && o.values.length > 0)
+        .map((o: any) => {
+          let name = o.name as string
+          let n = 2
+          while (seen.has(name)) name = `${o.name} (${n++})`
+          seen.add(name)
+          return { name, values: o.values as string[] }
+        })
+      return list as ProductOption[]
+    } catch {
+      return []
+    }
+  }
+
+  // generate object URLs for image previews and clean up on change
+  useEffect(() => {
+    if (!pImageFiles || pImageFiles.length === 0) {
+      setPImagePreviews([])
+      setPreviewIndex(0)
+      return
+    }
+    const urls = pImageFiles.map(f => URL.createObjectURL(f))
+    setPImagePreviews(urls)
+    setPreviewIndex(0)
+    return () => {
+      urls.forEach(u => { try { URL.revokeObjectURL(u) } catch {} })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pImageFiles])
+
   const handleProductUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username) return Swal.fire({ icon: 'warning', title: 'ต้องล็อกอินเป็นผู้ขายก่อน' })
-    if (!pName || !pPrice || !pCategory || !pImageFile) return Swal.fire({ icon: 'warning', title: 'กรุณากรอกข้อมูลให้ครบถ้วน' })
+    if (!pName || !pPrice || !pCategory || pImageFiles.length === 0) return Swal.fire({ icon: 'warning', title: 'กรุณากรอกข้อมูลให้ครบถ้วน' })
     try {
       setLoading(true)
       const fd = new FormData()
-      fd.append('files', pImageFile)
+      pImageFiles.forEach(f => fd.append('files', f))
       const up = await fetch('/api/upload', { method: 'POST', body: fd })
       if (!up.ok) throw new Error('upload failed')
       const upJson = await up.json().catch(()=>({}))
       const imageUrls: string[] = Array.isArray(upJson?.urls) ? upJson.urls : []
-      const imageUrl = imageUrls[0] || ''
-      const payload = { username, item: { name: pName, price: Number(pPrice), desc: pDesc, image: imageUrl } }
+
+      const payload = { username, item: { name: pName, price: Number(pPrice), desc: pDesc, images: imageUrls, options: sanitizeOptions(pOptions) } }
       const res = await fetch('/api/seller-products', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       if (!res.ok) {
         const errJson = await res.json().catch(()=>null)
         throw new Error(errJson?.error || errJson?.message || `create product failed (status ${res.status})`)
       }
       // success — refresh list
-      setPName(''); setPPrice(''); setPDesc(''); setPCategory(''); setPImageFile(null)
+      setPName(''); setPPrice(''); setPDesc(''); setPCategory(''); setPImageFiles([]); setPOptions([])
       await fetchData(username)
       Swal.fire({ icon: 'success', title: 'เพิ่มสินค้าสำเร็จ', timer: 1200, showConfirmButton: false })
     } catch (err:any) {
@@ -359,6 +413,30 @@ export default function SellerManagePage() {
     } catch (err:any) {
       console.error('buy now', err)
       Swal.fire({ icon: 'error', title: 'ไม่สามารถสั่งซื้อได้', text: err?.message || '' })
+    }
+  }
+
+  // delete a seller product by id (asks for confirmation)
+  const handleDeleteProduct = async (productId?: string) => {
+    if (!productId) return Swal.fire({ icon: 'warning', title: 'ไม่พบไอดีสินค้า' })
+    if (!username) return Swal.fire({ icon: 'warning', title: 'ต้องล็อกอินเป็นผู้ขายก่อน' })
+    const c = await Swal.fire({ title: 'ยืนยันการลบสินค้า?', text: 'เมื่อลบแล้วสินค้าจะหายจากหน้าร้าน', icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' })
+    if (!c.isConfirmed) return
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/seller-products?id=${encodeURIComponent(String(productId))}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(()=>null)
+        throw new Error(err?.error || err?.message || `delete failed (status ${res.status})`)
+      }
+      // refresh products list
+      if (username) await fetchData(username)
+      Swal.fire({ icon: 'success', title: 'ลบสินค้าเรียบร้อย', timer: 1000, showConfirmButton: false })
+    } catch (err:any) {
+      console.error('delete product', err)
+      Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: err?.message || '' })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -837,11 +915,12 @@ export default function SellerManagePage() {
                       </div>
                       
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">รูปภาพสินค้า</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">รูปภาพสินค้า (เลือกได้หลายรูป)</label>
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={(e) => setPImageFile(e.target.files?.[0] || null)}
+                          multiple
+                          onChange={(e) => setPImageFiles(Array.from(e.target.files || []))}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                           required
                         />
@@ -859,16 +938,80 @@ export default function SellerManagePage() {
                       </div>
                       
                       <div className="md:col-span-2">
-                        <button
-                          type="submit"
-                          disabled={loading}
-                          className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 disabled:opacity-50"
-                        >
-                          {loading ? 'กำลังเพิ่มสินค้า...' : 'เพิ่มสินค้า'}
-                        </button>
+                        {/* Option builder (same UX as admin) */}
+                        <div className="mb-4">
+                          <OptionBuilder value={pOptions} onChange={setPOptions} />
+                        </div>
+
+                        <div>
+                          <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 disabled:opacity-50"
+                          >
+                            {loading ? 'กำลังเพิ่มสินค้า...' : 'เพิ่มสินค้า'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </div>
+
+                  {/* Product preview */}
+                  <div className="mt-6">
+                    <div className="bg-white rounded-2xl border border-orange-100 p-6">
+                      <h3 className="text-lg font-bold mb-4">ตัวอย่างสินค้า (ก่อนเพิ่ม)</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="md:col-span-1">
+                          <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center border border-gray-100">
+                            {pImagePreviews && pImagePreviews.length > 0 ? (
+                              <img src={pImagePreviews[previewIndex] || pImagePreviews[0]} alt={pName || 'preview'} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="text-sm text-slate-500">ยังไม่ได้เลือกภาพ</div>
+                            )}
+                          </div>
+
+                          {pImagePreviews && pImagePreviews.length > 0 && (
+                            <div className="mt-3 flex gap-2 overflow-x-auto">
+                              {pImagePreviews.map((u, i) => (
+                                <button key={i} type="button" onClick={() => setPreviewIndex(i)} className={`w-16 h-16 rounded-md overflow-hidden border ${i===previewIndex? 'border-orange-500':''}`}>
+                                  <img src={u} alt={`thumb-${i}`} className="w-full h-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <div className="text-sm text-slate-600 mb-2">ชื่อสินค้า</div>
+                          <div className="text-lg font-semibold mb-3">{pName || '—'}</div>
+
+                          <div className="text-sm text-slate-600 mb-2">ราคา</div>
+                          <div className="text-lg font-bold text-orange-600 mb-3">{pPrice !== '' ? `฿${Number(pPrice).toLocaleString()}` : '—'}</div>
+
+                          <div className="text-sm text-slate-600 mb-2">หมวดหมู่</div>
+                          <div className="mb-3">{pCategory || '—'}</div>
+
+                          <div className="text-sm text-slate-600 mb-2">รายละเอียด</div>
+                          <div className="text-sm text-slate-700 mb-3">{pDesc || '—'}</div>
+
+                          <div className="text-sm text-slate-600 mb-2">ตัวเลือก</div>
+                          {pOptions && pOptions.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {pOptions.map((o, i) => (
+                                <div key={i} className="p-2 border rounded text-sm bg-orange-50">
+                                  <div className="font-semibold text-orange-700">{o.name}</div>
+                                  <div className="text-xs text-slate-700">{o.values.join(', ')}</div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500">ไม่ได้กำหนดตัวเลือก</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
 
                 {/* Products List */}
@@ -914,6 +1057,12 @@ export default function SellerManagePage() {
                                 >
                                   ซื้อเลย
                                 </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(product._id)}
+                                  className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+                                >
+                                  ลบ
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -930,3 +1079,138 @@ export default function SellerManagePage() {
     </div>
   )
 }
+
+    /* ---------- OptionBuilder (copied from admin) ---------- */
+    function OptionBuilder({
+      value, onChange
+    }: {
+      value: ProductOption[]
+      onChange: (next: ProductOption[]) => void
+    }) {
+      const [optName, setOptName] = useState('')
+      const [inputByIdx, setInputByIdx] = useState<Record<number, string>>({})
+
+      const addOption = () => {
+        const name = ensureString(optName)
+        if (!name) return
+        if (value.some(v => v.name.toLowerCase() === name.toLowerCase())) {
+          Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ', text: 'โปรดใช้ชื่ออื่น' }); return
+        }
+        onChange([...value, { name, values: [] }])
+        setOptName('')
+      }
+
+      const removeOption = (idx: number) => {
+        onChange(value.filter((_, i) => i !== idx))
+        const next = { ...inputByIdx }; delete next[idx]; setInputByIdx(next)
+      }
+
+      const addValue = (idx: number) => {
+        const raw = ensureString(inputByIdx[idx])
+        if (!raw) return
+        const tokens = raw.split(',').map(s => ensureString(s)).filter(Boolean)
+        const curr = new Set(value[idx].values)
+        let changed = false
+        tokens.forEach(t => { if (!curr.has(t)) { curr.add(t); changed = true } })
+        if (!changed) { setInputByIdx(prev => ({ ...prev, [idx]: '' })); return }
+        const next = value.map((o, i) => i === idx ? { ...o, values: Array.from(curr) } : o)
+        onChange(next)
+        setInputByIdx(prev => ({ ...prev, [idx]: '' }))
+      }
+
+      const removeValue = (optIdx: number, vIdx: number) => {
+        const next = value.map((o, i) =>
+          i === optIdx ? { ...o, values: o.values.filter((_, j) => j !== vIdx) } : o
+        )
+        onChange(next)
+      }
+
+      const renameOption = (idx: number, name: string) => {
+        const newName = ensureString(name)
+        const dup = value.some((o, i) => i !== idx && o.name.toLowerCase() === newName.toLowerCase())
+        if (dup) return Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ' })
+        const next = value.map((o, i) => i === idx ? { ...o, name: newName } : o)
+        onChange(next)
+      }
+
+      const Preview = () => (
+        <div className="mt-4 border-t border-orange-200 pt-3">
+          <div className="text-sm text-slate-600 mb-2">พรีวิวการแสดงผล:</div>
+          <div className="grid gap-3">
+            {value.map((opt, i) => (
+              <div key={i}>
+                <div className="text-sm font-semibold mb-1">{opt.name}</div>
+                <div className="flex flex-wrap gap-2">
+                  {opt.values.map((v, j) => (
+                    <span key={j} className="px-3 py-1 rounded-full border text-sm font-medium bg-orange-50 text-gray-700 border-orange-200 shadow">
+                      {v}
+                    </span>
+                  ))}
+                  {opt.values.length === 0 && <span className="text-xs text-slate-500">ยังไม่มีค่า</span>}
+                </div>
+              </div>
+            ))}
+            {!value.length && <div className="text-xs text-slate-500">ยังไม่ได้เพิ่มตัวเลือก</div>}
+          </div>
+        </div>
+      )
+
+      return (
+        <div className="rounded-2xl border border-orange-200 p-4 bg-orange-50/40">
+          <div className="flex flex-col md:flex-row gap-2 items-stretch">
+            <input
+              className="flex-1 border border-orange-200 rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              placeholder="ชื่อตัวเลือก (เช่น สี, ขนาด)"
+              value={optName}
+              onChange={e => setOptName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
+            />
+            <button type="button" onClick={addOption}
+              className="px-4 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700">
+              เพิ่มตัวเลือก
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4">
+            {value.map((opt, idx) => (
+              <div key={idx} className="rounded-xl bg-white border border-orange-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    value={opt.name}
+                    onChange={e => renameOption(idx, e.target.value)}
+                    className="font-semibold text-orange-700 bg-transparent border-0 outline-none flex-1"
+                  />
+                  <button type="button" onClick={() => removeOption(idx)}
+                    className="text-xs text-red-600 hover:underline">ลบตัวเลือก</button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {opt.values.map((val, vIdx) => (
+                    <span key={vIdx} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-200 shadow">
+                      {val}
+                      <button type="button" className="text-[10px] text-red-600" onClick={() => removeValue(idx, vIdx)}>✕</button>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={inputByIdx[idx] ?? ''}
+                    onChange={e => setInputByIdx(prev => ({ ...prev, [idx]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValue(idx) } }}
+                    className="flex-1 border border-orange-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    placeholder="เพิ่มค่า (แยกหลายค่าด้วย , แล้วกด Enter)"
+                  />
+                  <button type="button" onClick={() => addValue(idx)}
+                    className="h-9 px-3 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700">
+                    เพิ่มค่า
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Preview />
+        </div>
+      )
+    }
