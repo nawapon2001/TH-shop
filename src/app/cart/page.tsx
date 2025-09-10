@@ -17,6 +17,11 @@ type CartItem = Product & { qty: number }
 export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([])
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'ตะกร้าสินค้า | TH-THAI SHOP'
+  }, [])
+
   // load cart using canonical CartManager
   useEffect(() => {
     try {

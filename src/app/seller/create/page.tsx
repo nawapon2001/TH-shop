@@ -28,6 +28,11 @@ export default function SellerCreatePage() {
   const [email, setEmail] = useState('')
   const [province, setProvince] = useState('')
   const [address, setAddress] = useState('')
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'เพิ่มสินค้า | TH-THAI SHOP'
+  }, [])
   const [shopImage, setShopImage] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)

@@ -44,6 +44,11 @@ export default function AdminOrdersPage() {
   const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
   const [shippingInputs, setShippingInputs] = useState<Record<string, string>>({})
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'จัดการออเดอร์ | TH-THAI SHOP'
+  }, [])
+
   const fetchOrders = async () => {
     setLoading(true)
     try {

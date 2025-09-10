@@ -98,6 +98,15 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [liked, setLiked] = useState(false)
   const [lightbox, setLightbox] = useState(false)
+
+  // Update document title dynamically based on product
+  useEffect(() => {
+    if (product) {
+      document.title = `${product.name} | TH-THAI SHOP`
+    } else {
+      document.title = 'รายละเอียดสินค้า | TH-THAI SHOP'
+    }
+  }, [product])
   const [sellerInfo, setSellerInfo] = useState<any | null>(null)
 
   // Fetch product by id

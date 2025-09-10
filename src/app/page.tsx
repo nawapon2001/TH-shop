@@ -404,6 +404,11 @@ function ProductPageInner() {
   const params = useSearchParams() // ✅ อยู่ใน Suspense แล้ว
   const username = params.get('username') || undefined
 
+  /* Update document title */
+  useEffect(() => {
+    document.title = 'TH-THAI SHOP - ช็อปปิ้งออนไลน์ เพื่อคุณ'
+  }, [])
+
   /* Fetch products */
   useEffect(() => {
     const fetchData = async () => {

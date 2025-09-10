@@ -1,8 +1,13 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 
 export default function TermsPage() {
+  // Update document title
+  useEffect(() => {
+    document.title = 'เงื่อนไขการใช้งาน | TH-THAI SHOP'
+  }, [])
+
   const termsText = `
 # ข้อตกลงการใช้งานแพลตฟอร์ม **TH-THAI** (Terms of Service)
 

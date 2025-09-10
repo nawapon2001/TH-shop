@@ -37,6 +37,11 @@ export default function AdminsPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'จัดการผู้ดูแล | TH-THAI SHOP'
+  }, [])
+
   useEffect(() => {
     const list = loadAdmins()
     if (list.length === 0) {

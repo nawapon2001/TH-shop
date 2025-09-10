@@ -28,6 +28,11 @@ interface SellerInfo {
 export default function PrintShippingPage() {
   const params = useParams()
   const router = useRouter()
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'พิมพ์ใบปะหน้า | TH-THAI SHOP'
+  }, [])
   const orderId = params.orderId as string
   const [order, setOrder] = useState<Order | null>(null)
   const [sellerInfo, setSellerInfo] = useState<SellerInfo | null>(null)

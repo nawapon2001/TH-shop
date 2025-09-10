@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Swal from 'sweetalert2'
 import OrderChatPanel from '@/components/OrderChatPanel'
+import ProductOptionsManager from '@/components/ProductOptionsManager'
 import { MessageCircle } from 'lucide-react'
 import {
   Settings, LayoutGrid, Image as ImageIcon, Tag, PackagePlus, ListOrdered, Truck,
@@ -15,7 +16,17 @@ import {
 } from 'lucide-react'
 
 /* ---------- Types ---------- */
-type ProductOption = { name: string; values: string[] }
+type ProductOptionValue = {
+  value: string
+  price: number
+  priceType: 'add' | 'replace'
+}
+
+type ProductOption = { 
+  name: string; 
+  values: ProductOptionValue[] 
+}
+
 type Product = { _id: string; name: string; price: number | string; image?: string; images?: string[]; description?: string; category?: string; options?: ProductOption[]; username?: string; seller?: boolean }
 type Banner = { _id: string; url?: string; image?: string; isSmall?: boolean }
 
@@ -47,7 +58,21 @@ function sanitizeOptions(options: ProductOption[]): ProductOption[] {
   const cleaned = options
     .map(o => ({
       name: ensureString(o.name),
-      values: Array.from(new Set((o.values || []).map(ensureString).filter(Boolean)))
+      values: (o.values || [])
+        .map(v => {
+          // รองรับทั้งแบบเก่า (string) และแบบใหม่ (object)
+          if (typeof v === 'string') {
+            return { value: ensureString(v), price: 0, priceType: 'add' as const }
+          } else if (typeof v === 'object' && v !== null) {
+            return {
+              value: ensureString((v as any).value),
+              price: Number((v as any).price) || 0,
+              priceType: ((v as any).priceType === 'replace' ? 'replace' : 'add') as 'add' | 'replace'
+            }
+          }
+          return null
+        })
+        .filter((v): v is ProductOptionValue => v !== null && Boolean(v.value))
     }))
     .filter(o => o.name && o.values.length > 0)
 
@@ -405,6 +430,11 @@ export default function AdminPage() {
   const [isAuth, setIsAuth] = useState(false)
   const [authError, setAuthError] = useState('')
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'ผู้ดูแลระบบ | TH-THAI SHOP'
+  }, [])
+
   const DEFAULT_ADMINS: AdminCred[] = [{ username: 'nawapon1200', password: '055030376' }]
   const [adminUsers, setAdminUsers] = useState<AdminCred[]>(DEFAULT_ADMINS)
 
@@ -602,17 +632,24 @@ export default function AdminPage() {
       const imageUrls: string[] = Array.isArray(upJson?.urls) ? upJson.urls : []
 
       // 2) send product payload with image URLs
+      const sanitizedOptions = sanitizeOptions(options)
+      console.log('Options being sent:', JSON.stringify(sanitizedOptions, null, 2))
+      
       const payload = {
         name,
         price: Number(price),
         category: selectedCategory,
         description,
         images: imageUrls,
-        options: sanitizeOptions(options)
+        options: sanitizedOptions
       }
+      
+      console.log('Full payload:', JSON.stringify(payload, null, 2))
+      
       const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       if (!res.ok) {
         const err = await res.json().catch(()=>({}))
+        console.error('API Error:', err)
         throw new Error(err?.message || 'create product failed')
       }
       // success
@@ -984,8 +1021,11 @@ export default function AdminPage() {
                      </div>
 
                      <div>
-                       <label className="block text-sm font-medium mb-2">ตัวเลือกสินค้า</label>
-                       <OptionBuilder value={options} onChange={setOptions} />
+                       <ProductOptionsManager 
+                         options={options} 
+                         basePrice={typeof price === 'number' ? price : Number(price) || 0}
+                         onChange={setOptions} 
+                       />
                      </div>
 
                      <div className="flex items-center gap-3">
@@ -1302,141 +1342,6 @@ function getBannerSrc(b: { url?: string; image?: string; icon?: string }) {
 
 function Clock(props: any) { 
   return <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 
-}
-
-/* ---------- OptionBuilder ---------- */
-function OptionBuilder({
-  value, onChange
-}: {
-  value: ProductOption[]
-  onChange: (next: ProductOption[]) => void
-}) {
-  const [optName, setOptName] = useState('')
-  const [inputByIdx, setInputByIdx] = useState<Record<number, string>>({})
-
-  const addOption = () => {
-    const name = ensureString(optName)
-    if (!name) return
-    if (value.some(v => v.name.toLowerCase() === name.toLowerCase())) {
-      Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ', text: 'โปรดใช้ชื่ออื่น' }); return
-    }
-    onChange([...value, { name, values: [] }])
-    setOptName('')
-  }
-
-  const removeOption = (idx: number) => {
-    onChange(value.filter((_, i) => i !== idx))
-    const next = { ...inputByIdx }; delete next[idx]; setInputByIdx(next)
-  }
-
-  const addValue = (idx: number) => {
-    const raw = ensureString(inputByIdx[idx])
-    if (!raw) return
-    const tokens = raw.split(',').map(s => ensureString(s)).filter(Boolean)
-    const curr = new Set(value[idx].values)
-    let changed = false
-    tokens.forEach(t => { if (!curr.has(t)) { curr.add(t); changed = true } })
-    if (!changed) { setInputByIdx(prev => ({ ...prev, [idx]: '' })); return }
-    const next = value.map((o, i) => i === idx ? { ...o, values: Array.from(curr) } : o)
-    onChange(next)
-    setInputByIdx(prev => ({ ...prev, [idx]: '' }))
-  }
-
-  const removeValue = (optIdx: number, vIdx: number) => {
-    const next = value.map((o, i) =>
-      i === optIdx ? { ...o, values: o.values.filter((_, j) => j !== vIdx) } : o
-    )
-    onChange(next)
-  }
-
-  const renameOption = (idx: number, name: string) => {
-    const newName = ensureString(name)
-    const dup = value.some((o, i) => i !== idx && o.name.toLowerCase() === newName.toLowerCase())
-    if (dup) return Swal.fire({ icon: 'warning', title: 'ชื่อตัวเลือกซ้ำ' })
-    const next = value.map((o, i) => i === idx ? { ...o, name: newName } : o)
-    onChange(next)
-  }
-
-  const Preview = () => (
-    <div className="mt-4 border-t border-orange-200 pt-3">
-      <div className="text-sm text-slate-600 mb-2">พรีวิวการแสดงผล:</div>
-      <div className="grid gap-3">
-        {value.map((opt, i) => (
-          <div key={i}>
-            <div className="text-sm font-semibold mb-1">{opt.name}</div>
-            <div className="flex flex-wrap gap-2">
-              {opt.values.map((v, j) => (
-                <span key={j} className="px-3 py-1 rounded-full border text-sm font-medium bg-orange-50 text-gray-700 border-orange-200 shadow">
-                  {v}
-                </span>
-              ))}
-              {opt.values.length === 0 && <span className="text-xs text-slate-500">ยังไม่มีค่า</span>}
-            </div>
-          </div>
-        ))}
-        {!value.length && <div className="text-xs text-slate-500">ยังไม่ได้เพิ่มตัวเลือก</div>}
-      </div>
-    </div>
-  )
-
-  return (
-    <div className="rounded-2xl border border-orange-200 p-4 bg-orange-50/40">
-      <div className="flex flex-col md:flex-row gap-2 items-stretch">
-        <input
-          className="flex-1 border border-orange-200 rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
-          placeholder="ชื่อตัวเลือก (เช่น สี, ขนาด)"
-          value={optName}
-          onChange={e => setOptName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
-        />
-        <button type="button" onClick={addOption}
-          className="px-4 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700">
-          เพิ่มตัวเลือก
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-4">
-        {value.map((opt, idx) => (
-          <div key={idx} className="rounded-xl bg-white border border-orange-200 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                value={opt.name}
-                onChange={e => renameOption(idx, e.target.value)}
-                className="font-semibold text-orange-700 bg-transparent border-0 outline-none flex-1"
-              />
-              <button type="button" onClick={() => removeOption(idx)}
-                className="text-xs text-red-600 hover:underline">ลบตัวเลือก</button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-2">
-              {opt.values.map((val, vIdx) => (
-                <span key={vIdx} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-200 shadow">
-                  {val}
-                  <button type="button" className="text-[10px] text-red-600" onClick={() => removeValue(idx, vIdx)}>✕</button>
-                </span>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                value={inputByIdx[idx] ?? ''}
-                onChange={e => setInputByIdx(prev => ({ ...prev, [idx]: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValue(idx) } }}
-                className="flex-1 border border-orange-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                placeholder="เพิ่มค่า (แยกหลายค่าด้วย , แล้วกด Enter)"
-              />
-              <button type="button" onClick={() => addValue(idx)}
-                className="h-9 px-3 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700">
-                เพิ่มค่า
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Preview />
-    </div>
-  )
 }
 
 /* ---------- Orders center section ---------- */

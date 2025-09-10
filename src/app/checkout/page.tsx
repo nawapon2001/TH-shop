@@ -52,7 +52,10 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  // Slip & Verification
+  // Update document title
+  useEffect(() => {
+    document.title = 'ชำระเงิน | TH-THAI SHOP'
+  }, [])
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [slipPreview, setSlipPreview] = useState<string>('')
   const [slipHash, setSlipHash] = useState<string>('')

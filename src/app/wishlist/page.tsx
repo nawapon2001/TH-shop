@@ -26,6 +26,11 @@ export default function WishlistPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'สินค้าที่ถูกใจ | TH-THAI SHOP'
+  }, [])
+
   useEffect(() => {
     // อ่าน user จาก localStorage (เหมือนหน้า login)
     try {

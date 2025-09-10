@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '../../components/Header'
 import {
@@ -16,6 +16,11 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false)
   const [remember, setRemember] = useState(false)
   const router = useRouter()
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'เข้าสู่ระบบ | TH-THAI SHOP'
+  }, [])
 
   const emailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email])
   const canSubmit = emailValid && password.length > 0 && !loading

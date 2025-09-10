@@ -83,6 +83,11 @@ export default function ProfilePage() {
 
   useEffect(() => setProfile(value), [value])
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'โปรไฟล์ของฉัน | TH-THAI SHOP'
+  }, [])
+
   const errors = useMemo(() => {
     const e: Partial<Record<keyof UserProfile, string>> = {}
     if (!profile.name.trim()) e.name = 'กรุณากรอกชื่อ-นามสกุล'

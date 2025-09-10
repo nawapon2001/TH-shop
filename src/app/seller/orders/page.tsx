@@ -14,6 +14,11 @@ export default function SellerOrdersPage() {
   const [statusMap, setStatusMap] = useState<Record<string,string>>({})
   const [shipMap, setShipMap] = useState<Record<string,string>>({})
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'ออเดอร์ขาย | TH-THAI SHOP'
+  }, [])
+
   useEffect(() => {
     const u = getSellerUsername()
     if (!u) {

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Swal from 'sweetalert2'
 import {
@@ -28,6 +28,11 @@ export default function SellerAuthPage() {
   const router = useRouter()
   const [sellerUser, setSellerUser] = useState('')
   const [sellerPass, setSellerPass] = useState('')
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'ลงทะเบียนขาย | TH-THAI SHOP'
+  }, [])
   const [confirmPass, setConfirmPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)

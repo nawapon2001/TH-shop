@@ -15,6 +15,17 @@ export default function SellerStorefront() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Update document title dynamically based on seller
+  useEffect(() => {
+    if (seller && seller.shopName) {
+      document.title = `${seller.shopName} | TH-THAI SHOP`
+    } else if (username) {
+      document.title = `ร้าน ${username} | TH-THAI SHOP`
+    } else {
+      document.title = 'ร้านค้า | TH-THAI SHOP'
+    }
+  }, [seller, username])
+
   useEffect(() => {
     if (!username) return
     const fetchData = async () => {

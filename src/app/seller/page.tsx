@@ -28,6 +28,10 @@ const categories = [
 ]
 
 export default function SellerPage() {
+  // Update document title
+  useEffect(() => {
+    document.title = 'ร้านค้า | TH-THAI SHOP'
+  }, [])
   // Auth state
   const [sellerUser, setSellerUser] = useState<string | null>(null)
   const [sellerPass, setSellerPass] = useState('')
@@ -91,6 +95,15 @@ export default function SellerPage() {
       .then(r => r.json())
       .then(d => setProducts(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false))
+  }, [sellerUser])
+
+  // Update document title
+  useEffect(() => {
+    if (sellerUser) {
+      document.title = `${sellerUser} - หน้าผู้ขาย | TH-THAI SHOP`
+    } else {
+      document.title = 'เข้าสู่ระบบผู้ขาย | TH-THAI SHOP'
+    }
   }, [sellerUser])
 
   // Auth handlers

@@ -1,9 +1,22 @@
 import mongoose, { Schema, model, models } from 'mongoose'
 
+const OptionValueSchema = new Schema(
+  {
+    value: { type: String, required: true, trim: true },
+    price: { type: Number, default: 0 }, // ราคาเพิ่มเติมหรือราคาแทนที่
+    priceType: { 
+      type: String, 
+      enum: ['add', 'replace'], 
+      default: 'add' 
+    } // 'add' = เพิ่มจากราคาหลัก, 'replace' = แทนที่ราคาหลัก
+  },
+  { _id: false }
+)
+
 const OptionSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    values: { type: [String], default: [] },
+    values: { type: [OptionValueSchema], default: [] },
   },
   { _id: false }
 )

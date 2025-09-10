@@ -55,6 +55,11 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Update document title
+  useEffect(() => {
+    document.title = 'คำสั่งซื้อของฉัน | TH-THAI SHOP'
+  }, [])
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {
@@ -274,12 +279,6 @@ function OrderCard({ order }: { order: Order }) {
 
       {/* Actions */}
       <div className="mt-4 flex flex-wrap gap-2 justify-end">
-        <button
-          onClick={() => handlePrintReceipt(order)}
-          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-orange-200 bg-white text-orange-800 hover:bg-orange-50"
-        >
-          <Printer className="w-4 h-4" /> พิมพ์ใบเสร็จ
-        </button>
         <button
           onClick={() => setOpenChat((s) => !s)}
           className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-orange-600 text-white hover:bg-orange-700"

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import Header from '../../components/Header'
 import {
   Mail, Lock, User, Calendar, Eye, EyeOff, Loader2,
@@ -23,7 +23,10 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  const emailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email])
+  // Update document title
+  useEffect(() => {
+    document.title = 'สมัครสมาชิก | TH-THAI SHOP'
+  }, [])
   const pwStrength = useMemo(() => {
     const v = password
     let score = 0
