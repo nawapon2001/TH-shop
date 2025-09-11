@@ -14,7 +14,18 @@ import { Store } from 'lucide-react'
 // -------------------------------
 // Types
 // -------------------------------
-type ProductOption = { name: string; values: string[] }
+type ProductOptionValue = {
+  value: string
+  price?: number
+  priceType?: 'add' | 'replace'
+  stock?: number
+  sku?: string
+}
+
+type ProductOption = { 
+  name: string
+  values: (string | ProductOptionValue)[] 
+}
 
 type Product = {
   _id: string
@@ -40,10 +51,66 @@ type Product = {
 const formatTHB = (n: number) => new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(n)
 const ensureString = (v: unknown) => (v == null ? '' : String(v))
 
+// คำนวณราคาตามตัวเลือกที่เลือก
+function calculatePrice(basePrice: number, options: ProductOption[], selectedOptions: Record<string, string>): number {
+  let finalPrice = basePrice
+  
+  for (const option of options) {
+    const selectedValue = selectedOptions[option.name]
+    if (!selectedValue) continue
+    
+    const valueObj = option.values.find(v => {
+      if (typeof v === 'string') return v === selectedValue
+      return v.value === selectedValue
+    })
+    
+    if (valueObj && typeof valueObj === 'object') {
+      const price = valueObj.price || 0
+      if (valueObj.priceType === 'replace') {
+        finalPrice = price
+      } else {
+        finalPrice += price
+      }
+    }
+  }
+  
+  return Math.max(0, finalPrice)
+}
+
+// ดึงข้อมูลตัวเลือกแบบ object
+function getOptionValue(option: ProductOption, selectedValue: string): ProductOptionValue | null {
+  const valueObj = option.values.find(v => {
+    if (typeof v === 'string') return v === selectedValue
+    return v.value === selectedValue
+  })
+  
+  if (valueObj && typeof valueObj === 'object') {
+    return valueObj
+  }
+  return null
+}
+
 // กันเคส backend อื่น ๆ ที่ยังไม่ normalize (เผื่อไว้)
 function normalizeOptionsUI(raw: any): ProductOption[] {
   if (Array.isArray(raw) && raw.every((o) => typeof o === 'object' && Array.isArray(o?.values))) {
-    return (raw as any[]).map((o) => ({ name: ensureString(o.name), values: (o.values ?? []).map(ensureString) }))
+    return (raw as any[]).map((o) => ({ 
+      name: ensureString(o.name), 
+      values: (o.values ?? []).map((v: any) => {
+        // รองรับทั้งแบบ string เก่าและ object ใหม่
+        if (typeof v === 'string') {
+          return v
+        } else if (typeof v === 'object' && v !== null) {
+          return {
+            value: ensureString(v.value),
+            price: Number(v.price) || 0,
+            priceType: v.priceType === 'replace' ? 'replace' : 'add',
+            stock: Number(v.stock) || 0,
+            sku: ensureString(v.sku)
+          } as ProductOptionValue
+        }
+        return ensureString(v)
+      })
+    }))
   }
   if (Array.isArray(raw) && raw.every((v) => typeof v === 'string' || typeof v === 'number')) {
     return [{ name: 'ตัวเลือก', values: (raw as Array<string|number>).map(ensureString) }]
@@ -173,7 +240,14 @@ export default function ProductDetailPage() {
         if (normalizedOptions.length) {
           const init: Record<string, string> = {}
           normalizedOptions.forEach((o) => {
-            if (o.values?.length) init[o.name] = ensureString(o.values[0])
+            if (o.values?.length) {
+              const firstValue = o.values[0]
+              if (typeof firstValue === 'string') {
+                init[o.name] = firstValue
+              } else {
+                init[o.name] = firstValue.value
+              }
+            }
           })
           setSelectedOptions(init)
         } else {
@@ -226,12 +300,19 @@ export default function ProductDetailPage() {
 
     const mainImage = normalizeSrc(images[mainIndex]) || 'https://via.placeholder.com/600x600?text=No+Image'
 
-  // Price
+  // คำนวณราคาตามตัวเลือกที่เลือก
+  const calculatedPrice = useMemo(() => {
+    if (!product) return 0
+    return calculatePrice(product.price, product.options || [], selectedOptions)
+  }, [product, selectedOptions])
+
+  // Price with discount
   const discountedPrice = useMemo(() => {
     if (!product) return 0
-    if (!product.discountPercent) return product.price
-    return Math.round(product.price * (1 - product.discountPercent / 100))
-  }, [product])
+    const basePrice = calculatedPrice
+    if (!product.discountPercent) return basePrice
+    return Math.round(basePrice * (1 - product.discountPercent / 100))
+  }, [product, calculatedPrice])
 
   // Option gating: ถ้าไม่มีตัวเลือก -> ซื้อได้เลย
   const requiresOptions = (product?.options?.length ?? 0) > 0
@@ -450,19 +531,34 @@ export default function ProductDetailPage() {
             )}
 
             {/* Price */}
-            <div className="flex items-end gap-4">
-              <div className="text-3xl md:text-4xl font-extrabold text-orange-700 tracking-tight">
-                <span className="text-lg align-top mr-1">฿</span>
-                {formatTHB(discountedPrice)}
-              </div>
-              {product.discountPercent ? (
-                <div className="flex items-center gap-2">
-                  <span className="line-through text-gray-400">฿{formatTHB(product.price)}</span>
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-600 text-white">
-                    <Tag className="w-3.5 h-3.5" /> -{product.discountPercent}%
-                  </span>
+            <div className="flex flex-col gap-2">
+              {/* ราคาปัจจุบัน */}
+              <div className="flex items-end gap-4">
+                <div className="text-3xl md:text-4xl font-extrabold text-orange-700 tracking-tight">
+                  <span className="text-lg align-top mr-1">฿</span>
+                  {formatTHB(discountedPrice)}
                 </div>
-              ) : null}
+                {product.discountPercent ? (
+                  <div className="flex items-center gap-2">
+                    <span className="line-through text-gray-400">฿{formatTHB(calculatedPrice)}</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-600 text-white">
+                      <Tag className="w-3.5 h-3.5" /> -{product.discountPercent}%
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              
+              {/* แสดงราคาฐานถ้าราคาเปลี่ยนแปลงจากตัวเลือก */}
+              {calculatedPrice !== product.price && (
+                <div className="text-sm text-gray-500">
+                  ราคาฐาน: ฿{formatTHB(product.price)}
+                  {calculatedPrice > product.price ? (
+                    <span className="text-orange-600 ml-2">+฿{formatTHB(calculatedPrice - product.price)}</span>
+                  ) : calculatedPrice < product.price ? (
+                    <span className="text-green-600 ml-2">-฿{formatTHB(product.price - calculatedPrice)}</span>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             {/* Delivery / trust */}
@@ -491,26 +587,57 @@ export default function ProductDetailPage() {
 
                     <div className="flex gap-2 flex-wrap">
                       {(opt.values || []).map((rawVal, i) => {
-                        const val = ensureString(rawVal)
+                        let val: string
+                        let valueObj: ProductOptionValue | null = null
+                        
+                        if (typeof rawVal === 'string') {
+                          val = rawVal
+                        } else {
+                          val = rawVal.value
+                          valueObj = rawVal
+                        }
+                        
                         const active = selectedOptions[opt.name] === val
+                        const isOutOfStock = !!(valueObj && valueObj.stock !== undefined && valueObj.stock <= 0)
 
                         return (
                           <button
                             key={`${opt.name}-${val}-${i}`}
                             type="button"
                             style={{ WebkitTapHighlightColor: 'transparent' }}
-                            className={`px-3 h-9 rounded-full border text-sm font-medium transition ${
-                              active
+                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition relative ${
+                              isOutOfStock
+                                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                : active
                                 ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
                                 : 'bg-white text-gray-700 border-orange-200 hover:bg-orange-50'
                             }`}
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))
+                              if (!isOutOfStock) {
+                                setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))
+                              }
                             }}
+                            disabled={isOutOfStock}
                           >
-                            {val}
+                            <div className="flex flex-col items-center">
+                              <span>{val}</span>
+                              {valueObj && valueObj.price && valueObj.price > 0 && (
+                                <span className={`text-xs ${active ? 'text-orange-100' : 'text-orange-600'}`}>
+                                  {valueObj.priceType === 'replace' 
+                                    ? `฿${formatTHB(valueObj.price)}`
+                                    : `+฿${formatTHB(valueObj.price)}`
+                                  }
+                                </span>
+                              )}
+                              {isOutOfStock && (
+                                <span className="text-xs text-red-500">หมด</span>
+                              )}
+                              {valueObj && valueObj.stock !== undefined && valueObj.stock > 0 && valueObj.stock <= 5 && (
+                                <span className="text-xs text-yellow-600">เหลือ {valueObj.stock}</span>
+                              )}
+                            </div>
                           </button>
                         )
                       })}

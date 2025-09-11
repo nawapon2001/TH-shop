@@ -8,7 +8,9 @@ const OptionValueSchema = new Schema(
       type: String, 
       enum: ['add', 'replace'], 
       default: 'add' 
-    } // 'add' = เพิ่มจากราคาหลัก, 'replace' = แทนที่ราคาหลัก
+    }, // 'add' = เพิ่มจากราคาหลัก, 'replace' = แทนที่ราคาหลัก
+    stock: { type: Number, default: 0 }, // เพิ่มสต็อกสำหรับแต่ละตัวเลือก
+    sku: { type: String, trim: true } // รหัสสินค้าสำหรับแต่ละตัวเลือก
   },
   { _id: false }
 )

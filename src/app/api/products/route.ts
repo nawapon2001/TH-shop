@@ -7,6 +7,8 @@ type ProductOptionValue = {
   value: string; 
   price?: number; // ราคาเพิ่มเติม หรือ ราคาเฉพาะของตัวเลือกนี้
   priceType?: 'add' | 'replace'; // 'add' = เพิ่มจากราคาหลัก, 'replace' = แทนที่ราคาหลัก
+  stock?: number; // จำนวนสินค้าคงเหลือสำหรับตัวเลือกนี้
+  sku?: string; // รหัสสินค้าสำหรับตัวเลือกนี้
 }
 
 type ProductOption = { 
@@ -58,11 +60,15 @@ function sanitizeOptions(raw: any): ProductOption[] {
               
               const price = Number(v.price) || 0
               const priceType = (v.priceType === 'replace' ? 'replace' : 'add') as 'add' | 'replace'
+              const stock = Number(v.stock) || 0
+              const sku = ensureString(v.sku)
               
               return {
                 value,
                 price: Math.max(0, price), // ป้องกันราคาติดลบ
-                priceType
+                priceType,
+                stock: Math.max(0, stock), // ป้องกันสต็อกติดลบ
+                sku
               }
             }
             return null
@@ -162,11 +168,20 @@ export async function POST(req: Request) {
         if (!value.value || !value.value.trim()) {
           return NextResponse.json({ message: `กรุณาระบุค่าของตัวเลือก "${option.name}" ให้ถูกต้อง` }, { status: 400 })
         }
-        if (value.price < 0) {
+        
+        const price = value.price ?? 0
+        if (price < 0) {
           return NextResponse.json({ message: `ราคาของตัวเลือก "${option.name}: ${value.value}" ไม่สามารถน้อยกว่า 0 ได้` }, { status: 400 })
         }
-        if (!['add', 'replace'].includes(value.priceType)) {
+
+        const priceType = value.priceType || 'add'
+        if (!['add', 'replace'].includes(priceType)) {
           return NextResponse.json({ message: `ประเภทราคาของตัวเลือก "${option.name}: ${value.value}" ไม่ถูกต้อง` }, { status: 400 })
+        }
+
+        const stock = value.stock ?? 0
+        if (stock < 0) {
+          return NextResponse.json({ message: `สต็อกของตัวเลือก "${option.name}: ${value.value}" ไม่สามารถน้อยกว่า 0 ได้` }, { status: 400 })
         }
       }
     }
