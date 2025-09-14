@@ -12,7 +12,10 @@ import {
   Settings, LayoutGrid, Image as ImageIcon, Tag, PackagePlus, ListOrdered, Truck,
   RefreshCw, Upload, Trash2, LogIn, Search, CalendarClock,
   User, Phone, MapPin, Package, Filter, SortDesc, CheckCircle2, XCircle, BadgeCheck, Loader2, Copy, Store,
-  BarChart3, TrendingUp, Users, ShoppingCart, Activity, DollarSign, Eye, AlertCircle
+  BarChart3, TrendingUp, Users, ShoppingCart, Activity, DollarSign, Eye, AlertCircle, Bell, Plus, Edit, Save, Calendar, Clock, X,
+  Shirt, Smartphone, Home, Gamepad2, Book, Coffee, Car, Baby, 
+  Scissors, Palette, Dumbbell, Briefcase, Camera, Music, Utensils, 
+  Flower, Wrench, Shield, Globe, ChevronDown
 } from 'lucide-react'
 
 /* ---------- Types ---------- */
@@ -31,7 +34,19 @@ type Product = { _id: string; name: string; price: number | string; image?: stri
 type Banner = { _id: string; url?: string; image?: string; isSmall?: boolean }
 
 type Category = { name: string; icon?: string }
-type TabKey = 'dashboard' | 'orders' | 'banner' | 'category' | 'product' | 'list' | 'admins' | 'accounts'
+type TabKey = 'dashboard' | 'orders' | 'banner' | 'category' | 'product' | 'list' | 'admins' | 'accounts' | 'announcements'
+
+type Announcement = {
+  _id: string
+  title: string
+  content: string
+  type: 'info' | 'warning' | 'success' | 'urgent'
+  isActive: boolean
+  image?: string
+  startDate?: string
+  endDate?: string
+  createdAt: string
+}
 
 type OrderItem = { name: string; price: number; image?: string }
 type Amounts = { subtotal?: number; shipCost?: number; codFee?: number; total?: number }
@@ -509,6 +524,46 @@ export default function AdminPage() {
   const [users, setUsers] = useState<any[]>([])
   const [sellersList, setSellersList] = useState<any[]>([])
 
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [newAnnouncement, setNewAnnouncement] = useState({
+    title: '',
+    content: '',
+    type: 'info' as const,
+    startDate: '',
+    endDate: ''
+  })
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
+  const [announcementImageFile, setAnnouncementImageFile] = useState<File | null>(null)
+
+  // Category icon selection state
+  const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<string>('')
+  const [showIconPicker, setShowIconPicker] = useState(false)
+
+  // Available icons for categories
+  const availableIcons = [
+    { name: 'shirt', icon: <Shirt className="w-6 h-6" />, label: 'เสื้อผ้า' },
+    { name: 'smartphone', icon: <Smartphone className="w-6 h-6" />, label: 'มือถือ' },
+    { name: 'home', icon: <Home className="w-6 h-6" />, label: 'บ้าน' },
+    { name: 'gamepad2', icon: <Gamepad2 className="w-6 h-6" />, label: 'เกม' },
+    { name: 'book', icon: <Book className="w-6 h-6" />, label: 'หนังสือ' },
+    { name: 'coffee', icon: <Coffee className="w-6 h-6" />, label: 'อาหาร' },
+    { name: 'car', icon: <Car className="w-6 h-6" />, label: 'รถยนต์' },
+    { name: 'baby', icon: <Baby className="w-6 h-6" />, label: 'เด็ก' },
+    { name: 'scissors', icon: <Scissors className="w-6 h-6" />, label: 'ความงาม' },
+    { name: 'palette', icon: <Palette className="w-6 h-6" />, label: 'ศิลปะ' },
+    { name: 'dumbbell', icon: <Dumbbell className="w-6 h-6" />, label: 'กีฬา' },
+    { name: 'briefcase', icon: <Briefcase className="w-6 h-6" />, label: 'ธุรกิจ' },
+    { name: 'camera', icon: <Camera className="w-6 h-6" />, label: 'กล้อง' },
+    { name: 'music', icon: <Music className="w-6 h-6" />, label: 'เพลง' },
+    { name: 'utensils', icon: <Utensils className="w-6 h-6" />, label: 'ครัว' },
+    { name: 'flower', icon: <Flower className="w-6 h-6" />, label: 'สวน' },
+    { name: 'wrench', icon: <Wrench className="w-6 h-6" />, label: 'เครื่องมือ' },
+    { name: 'shield', icon: <Shield className="w-6 h-6" />, label: 'ความปลอดภัย' },
+    { name: 'globe', icon: <Globe className="w-6 h-6" />, label: 'ท่องเที่ยว' },
+    { name: 'package', icon: <Package className="w-6 h-6" />, label: 'อื่นๆ' }
+  ]
+
   const productCount = products.length
   const bannerCount = banners.length
   const categoryCount = categories.length
@@ -554,6 +609,109 @@ export default function AdminPage() {
   const fetchUsers = async () => { try { const r = await fetch('/api/admin-users'); const d = await r.json(); setUsers(Array.isArray(d)?d:[]) } catch { setUsers([]) } }
   const fetchSellersList = async () => { try { const r = await fetch('/api/sellers'); const d = await r.json(); setSellersList(Array.isArray(d)?d:[]) } catch { setSellersList([]) } }
 
+  // fetch announcements
+  const fetchAnnouncements = async () => { 
+    try { 
+      const r = await fetch('/api/announcements'); 
+      const d = await r.json(); 
+      setAnnouncements(Array.isArray(d) ? d : []) 
+    } catch { 
+      setAnnouncements([]) 
+    } 
+  }
+
+  // announcement management functions
+  const createAnnouncement = async () => {
+    if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) return
+    
+    try {
+      let imageUrl = ''
+      
+      // Upload image if provided
+      if (announcementImageFile) {
+        const formData = new FormData()
+        formData.append('file', announcementImageFile)
+        
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        })
+        
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json()
+          imageUrl = uploadData.url
+        }
+      }
+      
+      const response = await fetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newAnnouncement,
+          image: imageUrl || undefined,
+          isActive: true,
+          startDate: newAnnouncement.startDate || undefined,
+          endDate: newAnnouncement.endDate || undefined
+        })
+      })
+      
+      if (response.ok) {
+        setNewAnnouncement({ title: '', content: '', type: 'info', startDate: '', endDate: '' })
+        setAnnouncementImageFile(null)
+        await fetchAnnouncements()
+        Swal.fire('สำเร็จ', 'สร้างประกาศใหม่เรียบร้อยแล้ว', 'success')
+      }
+    } catch (error) {
+      console.error('Error creating announcement:', error)
+      Swal.fire('ข้อผิดพลาด', 'ไม่สามารถสร้างประกาศได้', 'error')
+    }
+  }
+
+  const toggleAnnouncementStatus = async (id: string, isActive: boolean) => {
+    try {
+      const response = await fetch('/api/announcements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isActive: !isActive })
+      })
+      
+      if (response.ok) {
+        await fetchAnnouncements()
+        Swal.fire('สำเร็จ', `${!isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}ประกาศเรียบร้อยแล้ว`, 'success')
+      }
+    } catch (error) {
+      console.error('Error toggling announcement:', error)
+      Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเปลี่ยนสถานะประกาศได้', 'error')
+    }
+  }
+
+  const deleteAnnouncement = async (id: string) => {
+    const result = await Swal.fire({
+      title: 'ยืนยันการลบ',
+      text: 'คุณต้องการลบประกาศนี้ใช่หรือไม่?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'ลบ',
+      cancelButtonText: 'ยกเลิก'
+    })
+    
+    if (result.isConfirmed) {
+      try {
+        const response = await fetch(`/api/announcements?id=${id}`, {
+          method: 'DELETE'
+        })
+        
+        if (response.ok) {
+          await fetchAnnouncements()
+          Swal.fire('สำเร็จ', 'ลบประกาศเรียบร้อยแล้ว', 'success')
+        }
+      } catch (error) {
+        console.error('Error deleting announcement:', error)
+        Swal.fire('ข้อผิดพลาด', 'ไม่สามารถลบประกาศได้', 'error')
+      }
+    }
+  }
+
   // include in refresh
   const refreshAllWithAccounts = async () => { setLoading(true); await Promise.all([fetchProducts(), fetchBanners(), fetchCategories(), fetchOrders(), fetchUsers(), fetchSellersList()]); setLoading(false) }
   useEffect(()=>{ fetchUsers(); fetchSellersList() }, [])
@@ -563,6 +721,13 @@ export default function AdminPage() {
     if (tab === 'accounts') {
       fetchUsers()
       fetchSellersList()
+    }
+  }, [tab])
+
+  // refresh announcements when opening announcements tab
+  useEffect(() => {
+    if (tab === 'announcements') {
+      fetchAnnouncements()
     }
   }, [tab])
 
@@ -598,11 +763,29 @@ export default function AdminPage() {
     e.preventDefault(); setCategoryError('')
     if (!category.trim()) { setCategoryError('กรุณากรอกชื่อหมวดหมู่'); return Swal.fire({ icon: 'warning', title: 'กรุณากรอกชื่อหมวดหมู่' }) }
     setIsAddingCategory(true)
-    const form = new FormData(); form.append('name', category.trim()); if (categoryIcon) form.append('icon', categoryIcon)
+    const form = new FormData(); 
+    form.append('name', category.trim()); 
+    
+    // Add selected icon from system or uploaded file
+    if (selectedCategoryIcon) {
+      form.append('iconType', 'system');
+      form.append('iconName', selectedCategoryIcon);
+    } else if (categoryIcon) {
+      form.append('iconType', 'upload');
+      form.append('icon', categoryIcon);
+    }
+    
     try {
       const res = await fetch('/api/categories', { method: 'POST', body: form })
       if (!res.ok) { const err = await res.json().catch(()=>({})); setCategoryError(err?.message || 'เพิ่มหมวดหมู่ไม่สำเร็จ'); Swal.fire({ icon: 'error', title: 'เพิ่มหมวดหมู่ไม่สำเร็จ', text: err?.message || '' }) }
-      else { setCategory(''); setCategoryIcon(null); await fetchCategories(); Swal.fire({ icon: 'success', title: 'เพิ่มหมวดหมู่สำเร็จ', timer: 1200, showConfirmButton: false }) }
+      else { 
+        setCategory(''); 
+        setCategoryIcon(null); 
+        setSelectedCategoryIcon(''); 
+        setShowIconPicker(false);
+        await fetchCategories(); 
+        Swal.fire({ icon: 'success', title: 'เพิ่มหมวดหมู่สำเร็จ', timer: 1200, showConfirmButton: false }) 
+      }
     } finally { setIsAddingCategory(false) }
   }
 
@@ -616,12 +799,19 @@ export default function AdminPage() {
     setProductFiles(prev => [...prev, ...list.filter(f => !prev.some(p => p.name===f.name && p.size===f.size))])
   }
 
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   const handleProductUpload = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // ป้องกันการ submit ซ้ำ
+    if (isSubmitting) return
+    
     if (!name || !price || !selectedCategory || productFiles.length===0) {
       return Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบถ้วน', text: 'กรุณากรอกข้อมูลให้ครบถ้วนและเลือกรูปภาพ' })
     }
 
+    setIsSubmitting(true)
     try {
       // 1) upload product images to /api/upload
       const uploadFd = new FormData()
@@ -659,6 +849,8 @@ export default function AdminPage() {
     } catch (err:any) {
       console.error('product upload/create error', err)
       Swal.fire({ icon: 'error', title: 'เพิ่มสินค้าไม่สำเร็จ', text: err?.message || '' })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -716,7 +908,7 @@ export default function AdminPage() {
   if (!isAuth) {
     // Enhanced login form with beautiful styling
     return (
-      <div className="min-h-screen grid place-items-center bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50 relative overflow-hidden">
+      <div className="min-h-screen grid place-items-center bg-white relative overflow-hidden">
         {/* Background decorations */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-200/40 to-amber-200/40 rounded-full blur-3xl"></div>
@@ -803,7 +995,7 @@ export default function AdminPage() {
 
   // Enhanced main admin interface
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50/30 to-amber-50/30 relative">
+    <div className="min-h-screen bg-white relative">
       {/* Animated background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-orange-200/20 to-amber-200/20 rounded-full blur-3xl animate-pulse"></div>
@@ -860,6 +1052,7 @@ export default function AdminPage() {
              <NavButton icon={<ListOrdered className="w-4 h-4" />} active={tab==='list'} onClick={()=>setTab('list')}>รายการสินค้า</NavButton>
              <NavButton icon={<User className="w-4 h-4" />} active={tab==='admins'} onClick={() => setTab('admins')}>ผู้ดูแลระบบ</NavButton>
              <NavButton icon={<BadgeCheck className="w-4 h-4" />} active={tab==='accounts'} onClick={() => setTab('accounts')}>บัญชีผู้ใช้ / ร้านค้า</NavButton>
+             <NavButton icon={<Bell className="w-4 h-4" />} active={tab==='announcements'} onClick={() => setTab('announcements')}>ประกาศ</NavButton>
            </nav>
          </aside>
  
@@ -959,10 +1152,109 @@ export default function AdminPage() {
 
            {tab === 'category' && (
              <SectionCard title="จัดการหมวดหมู่" subtitle="เพิ่ม/ลบหมวดหมู่และไอคอนได้">
-               <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-2">
-                 <input className="flex-1 border border-orange-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="เพิ่มหมวดหมู่ใหม่" value={category} onChange={e=>setCategory(e.target.value)} />
-                 <input type="file" accept="image/*" className="border border-orange-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" onChange={e=>setCategoryIcon(e.target.files?.[0]||null)} />
-                 <button type="submit" disabled={isAddingCategory} className="h-11 px-5 rounded-full bg-gradient-to-r from-green-500 to-lime-400 text-white font-semibold hover:from-green-600 hover:to-lime-500">{isAddingCategory ? 'กำลังเพิ่ม…' : 'เพิ่มหมวดหมู่'}</button>
+               <form onSubmit={handleAddCategory} className="grid gap-4">
+                 <input 
+                   className="border border-orange-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" 
+                   placeholder="เพิ่มหมวดหมู่ใหม่" 
+                   value={category} 
+                   onChange={e=>setCategory(e.target.value)} 
+                 />
+                 
+                 {/* Icon Selection Options */}
+                 <div className="border border-orange-200 rounded-xl p-4 bg-orange-50/30">
+                   <div className="text-sm font-semibold text-slate-700 mb-3">เลือกไอคอนสำหรับหมวดหมู่</div>
+                   
+                   {/* Selected Icon Display */}
+                   {selectedCategoryIcon && (
+                     <div className="mb-3 p-3 bg-white rounded-lg border flex items-center gap-3">
+                       <div className="w-8 h-8 flex items-center justify-center">
+                         {availableIcons.find(icon => icon.name === selectedCategoryIcon)?.icon}
+                       </div>
+                       <span className="text-sm text-slate-600">
+                         เลือกไอคอน: {availableIcons.find(icon => icon.name === selectedCategoryIcon)?.label}
+                       </span>
+                       <button 
+                         type="button" 
+                         onClick={() => setSelectedCategoryIcon('')}
+                         className="ml-auto text-xs text-red-600 hover:text-red-800"
+                       >
+                         <X className="w-4 h-4" />
+                       </button>
+                     </div>
+                   )}
+                   
+                   <div className="flex flex-wrap gap-2 mb-3">
+                     <button
+                       type="button"
+                       onClick={() => setShowIconPicker(!showIconPicker)}
+                       className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                     >
+                       <Package className="w-4 h-4" />
+                       เลือกไอคอนจากระบบ
+                       <ChevronDown className={`w-4 h-4 transition-transform ${showIconPicker ? 'rotate-180' : ''}`} />
+                     </button>
+                     
+                     <label className="flex items-center gap-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 cursor-pointer text-sm">
+                       <Upload className="w-4 h-4" />
+                       อัปโหลดไอคอนเอง
+                       <input 
+                         type="file" 
+                         accept="image/*" 
+                         className="hidden" 
+                         onChange={e=>setCategoryIcon(e.target.files?.[0]||null)} 
+                       />
+                     </label>
+                   </div>
+                   
+                   {/* Icon Picker Grid */}
+                   {showIconPicker && (
+                     <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 p-3 bg-white rounded-lg border">
+                       {availableIcons.map(iconItem => (
+                         <button
+                           key={iconItem.name}
+                           type="button"
+                           onClick={() => {
+                             setSelectedCategoryIcon(iconItem.name)
+                             setShowIconPicker(false)
+                             setCategoryIcon(null) // Clear file upload when selecting icon
+                           }}
+                           className={`p-3 rounded-lg border-2 hover:bg-orange-50 transition-colors ${
+                             selectedCategoryIcon === iconItem.name 
+                               ? 'border-orange-400 bg-orange-100' 
+                               : 'border-gray-200 hover:border-orange-300'
+                           }`}
+                           title={iconItem.label}
+                         >
+                           {iconItem.icon}
+                         </button>
+                       ))}
+                     </div>
+                   )}
+                   
+                   {categoryIcon && (
+                     <div className="mt-3 p-3 bg-white rounded-lg border flex items-center gap-3">
+                       <Upload className="w-5 h-5 text-green-600" />
+                       <span className="text-sm text-slate-600">
+                         ไฟล์ที่เลือก: {categoryIcon.name}
+                       </span>
+                       <button 
+                         type="button" 
+                         onClick={() => setCategoryIcon(null)}
+                         className="ml-auto text-xs text-red-600 hover:text-red-800"
+                       >
+                         <X className="w-4 h-4" />
+                       </button>
+                     </div>
+                   )}
+                 </div>
+                 
+                 <button 
+                   type="submit" 
+                   disabled={isAddingCategory} 
+                   className="h-11 px-5 rounded-full bg-gradient-to-r from-green-500 to-lime-400 text-white font-semibold hover:from-green-600 hover:to-lime-500"
+                 >
+                   {isAddingCategory ? 'กำลังเพิ่ม…' : 'เพิ่มหมวดหมู่'}
+                 </button>
                </form>
                {categoryError && <div className="text-red-600 mt-2">{categoryError}</div>}
                <div className="mt-5 flex flex-wrap gap-3">
@@ -1029,8 +1321,15 @@ export default function AdminPage() {
                      </div>
 
                      <div className="flex items-center gap-3">
-                       <button type="submit" className="h-12 px-6 rounded-full bg-gradient-to-r from-green-600 to-lime-500 text-white font-semibold shadow-lg hover:from-green-700" disabled={productFiles.length===0}>บันทึกสินค้า</button>
-                       <button type="button" onClick={() => { setName(''); setPrice(''); setDescription(''); setSelectedCategory(''); setProductFiles([]); setOptions([]) }} className="h-12 px-4 rounded-lg border border-orange-200 text-orange-700">ล้างฟอร์ม</button>
+                       <button 
+                         type="submit" 
+                         className="h-12 px-6 rounded-full bg-gradient-to-r from-green-600 to-lime-500 text-white font-semibold shadow-lg hover:from-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
+                         disabled={productFiles.length===0 || isSubmitting}
+                       >
+                         {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                         {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
+                       </button>
+                       <button type="button" onClick={() => { setName(''); setPrice(''); setDescription(''); setSelectedCategory(''); setProductFiles([]); setOptions([]) }} className="h-12 px-4 rounded-lg border border-orange-200 text-orange-700" disabled={isSubmitting}>ล้างฟอร์ม</button>
                        {productFiles.length===0 && <span className="text-slate-500 text-sm">* กรุณาเพิ่มรูปสินค้าเพื่อบันทึก</span>}
                      </div>
                    </form>
@@ -1062,7 +1361,12 @@ export default function AdminPage() {
                              {options.map((o,i)=>(
                                <div key={i} className="p-2 rounded-md bg-orange-50 border border-orange-100 text-sm">
                                  <div className="font-semibold text-orange-700">{o.name}</div>
-                                 <div className="text-xs text-slate-600">{o.values.join(' · ')}</div>
+                                 <div className="text-xs text-slate-600">
+                                   {o.values.map(v => {
+                                     const displayPrice = v.priceType === 'replace' ? v.price : (Number(price) || 0) + v.price
+                                     return `${v.value} (฿${displayPrice.toLocaleString()})`
+                                   }).join(' · ')}
+                                 </div>
                                </div>
                              ))}
                            </div>
@@ -1183,6 +1487,263 @@ export default function AdminPage() {
                       </div>
                     ))}
                     {sellersList.length===0 && <div className="text-slate-500">ไม่มีร้านค้าในระบบ</div>}
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {tab === 'announcements' && (
+            <SectionCard title="จัดการประกาศระบบ" subtitle="สร้างและจัดการประกาศสำหรับผู้ใช้งาน">
+              <div className="grid gap-6">
+                {/* Create announcement form */}
+                <div className="p-6 rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <Plus className="w-5 h-5" />
+                    สร้างประกาศใหม่
+                  </h3>
+                  
+                  <div className="grid gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">หัวข้อประกาศ</label>
+                      <input
+                        type="text"
+                        value={newAnnouncement.title}
+                        onChange={(e) => setNewAnnouncement(prev => ({ ...prev, title: e.target.value }))}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="ระบุหัวข้อประกาศ..."
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">เนื้อหาประกาศ</label>
+                      <textarea
+                        value={newAnnouncement.content}
+                        onChange={(e) => setNewAnnouncement(prev => ({ ...prev, content: e.target.value }))}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-24"
+                        placeholder="เขียนเนื้อหาประกาศ..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">รูปภาพประกอบ (ไม่จำเป็น)</label>
+                      <div className="space-y-3">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setAnnouncementImageFile(e.target.files?.[0] || null)}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        {announcementImageFile && (
+                          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-white border">
+                              <img 
+                                src={URL.createObjectURL(announcementImageFile)} 
+                                alt="ตัวอย่างรูปภาพ"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-slate-700">{announcementImageFile.name}</p>
+                              <p className="text-xs text-slate-500">{(announcementImageFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAnnouncementImageFile(null)}
+                              className="text-red-600 hover:text-red-700 p-1"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">ประเภทประกาศ</label>
+                        <select
+                          value={newAnnouncement.type}
+                          onChange={(e) => setNewAnnouncement(prev => ({ ...prev, type: e.target.value as any }))}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="info">ข้อมูลทั่วไป</option>
+                          <option value="success">ข่าวดี</option>
+                          <option value="warning">เตือน</option>
+                          <option value="urgent">เร่งด่วน</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">วันที่เริ่ม (ไม่จำเป็น)</label>
+                        <input
+                          type="date"
+                          value={newAnnouncement.startDate}
+                          onChange={(e) => setNewAnnouncement(prev => ({ ...prev, startDate: e.target.value }))}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">วันที่สิ้นสุด (ไม่จำเป็น)</label>
+                        <input
+                          type="date"
+                          value={newAnnouncement.endDate}
+                          onChange={(e) => setNewAnnouncement(prev => ({ ...prev, endDate: e.target.value }))}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={createAnnouncement}
+                      disabled={!newAnnouncement.title.trim() || !newAnnouncement.content.trim()}
+                      className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Save className="w-4 h-4" />
+                      สร้างประกาศ
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Announcements list */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-800">ประกาศในระบบ</h3>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="flex items-center gap-2 px-3 py-1 bg-green-100 rounded-full border border-green-200">
+                        <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                        <span className="text-green-700 font-semibold">เปิดใช้งาน: {announcements.filter(a => a.isActive).length}</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-1 bg-red-100 rounded-full border border-red-200">
+                        <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                        <span className="text-red-700 font-semibold">ปิดใช้งาน: {announcements.filter(a => !a.isActive).length}</span>
+                      </div>
+                      <div className="text-slate-600 font-medium px-3 py-1 bg-slate-100 rounded-full">รวม: {announcements.length} ประกาศ</div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid gap-3">
+                    {announcements.map(announcement => {
+                      const typeColors = {
+                        info: 'border-blue-200 bg-blue-50',
+                        success: 'border-green-200 bg-green-50',
+                        warning: 'border-yellow-200 bg-yellow-50',
+                        urgent: 'border-red-200 bg-red-50'
+                      }
+                      
+                      const typeIcons = {
+                        info: <AlertCircle className="w-5 h-5 text-blue-600" />,
+                        success: <CheckCircle2 className="w-5 h-5 text-green-600" />,
+                        warning: <AlertCircle className="w-5 h-5 text-yellow-600" />,
+                        urgent: <AlertCircle className="w-5 h-5 text-red-600" />
+                      }
+                      
+                      const typeLabels = {
+                        info: 'ข้อมูลทั่วไป',
+                        success: 'ข่าวดี',
+                        warning: 'เตือน',
+                        urgent: 'เร่งด่วน'
+                      }
+                      
+                      return (
+                        <div key={announcement._id} className={`relative p-4 rounded-xl border transition-all ${typeColors[announcement.type]} ${!announcement.isActive ? 'grayscale opacity-60 bg-gray-50' : ''}`}>
+                          {/* Status overlay for disabled announcements */}
+                          {!announcement.isActive && (
+                            <div className="absolute inset-0 bg-gray-900/20 rounded-xl flex items-center justify-center">
+                              <div className="bg-red-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg">
+                                🚫 ปิดใช้งาน
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                {typeIcons[announcement.type]}
+                                <span className="font-semibold text-slate-800">{announcement.title}</span>
+                                <span className="text-xs px-2 py-1 rounded-full bg-white/50 border">{typeLabels[announcement.type]}</span>
+                                <span className={`text-xs px-3 py-1 rounded-full font-bold border-2 ${
+                                  announcement.isActive 
+                                    ? 'bg-green-500 text-white border-green-500 shadow-lg animate-pulse' 
+                                    : 'bg-red-500 text-white border-red-500 shadow-lg'
+                                }`}>
+                                  {announcement.isActive ? '🟢 ใช้งานอยู่' : '🔴 ปิดใช้งาน'}
+                                </span>
+                              </div>
+                              <p className={`text-sm mb-2 ${!announcement.isActive ? 'text-gray-600' : 'text-slate-700'}`}>
+                                {announcement.content}
+                              </p>
+                              
+                              {!announcement.isActive && (
+                                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                  <p className="text-red-700 text-sm font-semibold">⚠️ ประกาศนี้ถูกปิดใช้งาน</p>
+                                  <p className="text-red-600 text-xs">ผู้ใช้งานจะไม่เห็นประกาศนี้ในหน้าหลัก</p>
+                                </div>
+                              )}
+                              
+                              {announcement.image && (
+                                <div className="mb-3">
+                                  <img 
+                                    src={announcement.image} 
+                                    alt={announcement.title}
+                                    className={`w-full max-w-md h-48 object-cover rounded-lg border shadow-sm ${!announcement.isActive ? 'grayscale opacity-50' : ''}`}
+                                  />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  สร้าง: {new Date(announcement.createdAt).toLocaleDateString('th-TH')}
+                                </span>
+                                {announcement.startDate && (
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    เริ่ม: {new Date(announcement.startDate).toLocaleDateString('th-TH')}
+                                  </span>
+                                )}
+                                {announcement.endDate && (
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    สิ้นสุด: {new Date(announcement.endDate).toLocaleDateString('th-TH')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2 min-w-[120px]">
+                              <button
+                                onClick={() => toggleAnnouncementStatus(announcement._id, announcement.isActive)}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all transform hover:scale-105 ${
+                                  announcement.isActive 
+                                    ? 'bg-red-600 text-white hover:bg-red-700 shadow-lg hover:shadow-xl border-2 border-red-600' 
+                                    : 'bg-green-600 text-white hover:bg-green-700 shadow-lg hover:shadow-xl border-2 border-green-600'
+                                }`}
+                              >
+                                {announcement.isActive ? '🔴 ปิดการใช้งาน' : '🟢 เปิดการใช้งาน'}
+                              </button>
+                              <button
+                                onClick={() => deleteAnnouncement(announcement._id)}
+                                className="px-4 py-2 rounded-lg bg-gray-600 text-white hover:bg-gray-700 text-sm font-bold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl border-2 border-gray-600"
+                              >
+                                🗑️ ลบประกาศ
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    
+                    {announcements.length === 0 && (
+                      <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+                        <Bell className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-slate-600 mb-2">ยังไม่มีประกาศในระบบ</h3>
+                        <p className="text-sm text-slate-500 mb-4">สร้างประกาศใหม่เพื่อแจ้งข้อมูลสำคัญให้ผู้ใช้งานทราบ</p>
+                        <div className="text-xs text-slate-400">
+                          💡 ประกาศจะแสดงในหน้าแรกของเว็บไซต์เมื่อผู้ใช้เข้ามา
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1338,10 +1899,6 @@ function getBannerSrc(b: { url?: string; image?: string; icon?: string }) {
   if (raw.startsWith('//')) return raw
   if (raw.startsWith('/')) return raw
   return `/banners/${raw.replace(/^\/?banners\//, '')}`
-}
-
-function Clock(props: any) { 
-  return <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 
 }
 
 /* ---------- Orders center section ---------- */

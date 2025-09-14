@@ -243,13 +243,47 @@ export async function POST(req: Request) {
   }
 }
 
+// เพิ่มฟังก์ชัน normalize สำหรับ GET
+function normalizeOptionsForOutput(raw: any): any[] {
+  if (!raw || !Array.isArray(raw)) return []
+  
+  return raw.map((option: any) => {
+    if (!option || typeof option !== 'object') return option
+    
+    return {
+      name: option.name || '',
+      values: Array.isArray(option.values) ? option.values.map((v: any) => {
+        // ถ้าเป็น object ให้ส่งข้อมูลราคาด้วย
+        if (typeof v === 'object' && v !== null && v.value) {
+          return {
+            value: v.value,
+            price: v.price || 0,
+            priceType: v.priceType || 'add'
+          }
+        }
+        // ถ้าเป็น string ให้แปลงเป็น object
+        return {
+          value: v,
+          price: 0,
+          priceType: 'add'
+        }
+      }) : []
+    }
+  })
+}
+
 export async function GET() {
   try {
     // Try Mongoose first
     try {
       await connectToDatabase()
       const products = await Product.find().lean()
-      return NextResponse.json(products)
+      // Normalize options ก่อนส่งกลับ
+      const normalizedProducts = products.map((product: any) => ({
+        ...product,
+        options: normalizeOptionsForOutput(product.options)
+      }))
+      return NextResponse.json(normalizedProducts)
     } catch (mongooseError) {
       console.warn('Mongoose failed, trying raw MongoDB client:', mongooseError)
     }
@@ -262,7 +296,12 @@ export async function GET() {
     
     const db = client.db('signshop')
     const products = await db.collection('products').find({}).toArray()
-    return NextResponse.json(products)
+    // Normalize options ก่อนส่งกลับ
+    const normalizedProducts = products.map((product: any) => ({
+      ...product,
+      options: normalizeOptionsForOutput(product.options)
+    }))
+    return NextResponse.json(normalizedProducts)
   } catch (err) {
     console.error('Error fetching products:', err)
     return NextResponse.json({ message: 'ดึงสินค้าไม่สำเร็จ' }, { status: 500 })

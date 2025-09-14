@@ -9,10 +9,13 @@ import Banner from '@/components/Banner'
 import FullScreenBanner from '@/components/FullScreenBanner'
 import ProductRecommendations from '@/components/ProductRecommendations'
 import Swal from 'sweetalert2'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   ShoppingCart, Search, Filter, X, Truck, Star, ChevronLeft, ChevronRight,
-  Heart, Share2, Eye, Zap, Gift, Crown
+  Heart, Share2, Eye, Zap, Gift, Crown, Bell, AlertCircle, CheckCircle2,
+  Shirt, Smartphone, Home, Gamepad2, Book, Coffee, Car, Baby, 
+  Scissors, Palette, Dumbbell, Briefcase, Camera, Music, Utensils, 
+  Flower, Wrench, Shield, Globe, Package
 } from 'lucide-react'
 import { Store } from 'lucide-react'
 
@@ -30,15 +33,133 @@ type Product = {
   freeShipping?: boolean
   category?: string
 }
-type Category = { name: string; icon?: string }
+type Category = { 
+  name: string; 
+  icon?: string;
+  iconType?: 'system' | 'upload';
+  iconName?: string;
+}
 type BannerItem = { url: string; isSmall?: boolean }
 type ApiBanner = { image?: string; url?: string; isSmall?: boolean }
 type SortKey = 'popular' | 'price_asc' | 'price_desc'
+
+type Announcement = {
+  _id: string
+  title: string
+  content: string
+  type: 'info' | 'warning' | 'success' | 'urgent'
+  isActive: boolean
+  image?: string
+  startDate?: string
+  endDate?: string
+  createdAt: string
+}
 
 /* ------------------------------- Helpers ------------------------------- */
 const formatTHB = (value: number) =>
   new Intl.NumberFormat('th-TH', { minimumFractionDigits: 0 }).format(value)
 const clamp = (n: number, min = 0, max = 5) => Math.max(min, Math.min(max, n))
+
+// Function to get appropriate icon for category
+const getCategoryIcon = (category: Category) => {
+  // หากผู้ดูแลเลือกไอคอนจากระบบ ให้ใช้ไอคอนที่เลือก
+  if (category.iconType === 'system' && category.iconName) {
+    const iconName = category.iconName.toLowerCase()
+    
+    switch (iconName) {
+      case 'shirt': return <Shirt className="w-7 h-7 text-orange-600" />
+      case 'smartphone': return <Smartphone className="w-7 h-7 text-blue-600" />
+      case 'home': return <Home className="w-7 h-7 text-green-600" />
+      case 'gamepad2': return <Gamepad2 className="w-7 h-7 text-purple-600" />
+      case 'book': return <Book className="w-7 h-7 text-indigo-600" />
+      case 'coffee': return <Coffee className="w-7 h-7 text-amber-600" />
+      case 'car': return <Car className="w-7 h-7 text-gray-600" />
+      case 'baby': return <Baby className="w-7 h-7 text-pink-600" />
+      case 'scissors': return <Scissors className="w-7 h-7 text-rose-600" />
+      case 'palette': return <Palette className="w-7 h-7 text-cyan-600" />
+      case 'dumbbell': return <Dumbbell className="w-7 h-7 text-red-600" />
+      case 'briefcase': return <Briefcase className="w-7 h-7 text-slate-600" />
+      case 'camera': return <Camera className="w-7 h-7 text-emerald-600" />
+      case 'music': return <Music className="w-7 h-7 text-violet-600" />
+      case 'utensils': return <Utensils className="w-7 h-7 text-orange-500" />
+      case 'flower': return <Flower className="w-7 h-7 text-green-500" />
+      case 'wrench': return <Wrench className="w-7 h-7 text-gray-700" />
+      case 'shield': return <Shield className="w-7 h-7 text-blue-700" />
+      case 'globe': return <Globe className="w-7 h-7 text-teal-600" />
+      case 'package': 
+      default: return <Package className="w-7 h-7 text-orange-600" />
+    }
+  }
+  
+  // หากมีไอคอนที่อัปโหลดเอง ให้ใช้จากระบบเดิม
+  if (category.icon) {
+    return null // จะใช้ <img> ใน component แทน
+  }
+  
+  // ใช้ระบบเดิมสำหรับหมวดหมู่ที่ไม่มีการกำหนดไอคอน
+  const name = category.name.toLowerCase()
+  
+  if (name.includes('เสื้อ') || name.includes('ผ้า') || name.includes('แฟชั่น') || name.includes('เครื่องแต่ง')) {
+    return <Shirt className="w-7 h-7 text-orange-600" />
+  }
+  if (name.includes('โทรศัพท์') || name.includes('มือถือ') || name.includes('สมาร์ท') || name.includes('เทคโนโลยี')) {
+    return <Smartphone className="w-7 h-7 text-blue-600" />
+  }
+  if (name.includes('บ้าน') || name.includes('เฟอร์นิเจอร์') || name.includes('ของใช้') || name.includes('ตกแต่ง')) {
+    return <Home className="w-7 h-7 text-green-600" />
+  }
+  if (name.includes('เกม') || name.includes('ของเล่น') || name.includes('บันเทิง')) {
+    return <Gamepad2 className="w-7 h-7 text-purple-600" />
+  }
+  if (name.includes('หนังสือ') || name.includes('การศึกษา') || name.includes('เรียน')) {
+    return <Book className="w-7 h-7 text-indigo-600" />
+  }
+  if (name.includes('อาหาร') || name.includes('เครื่องดื่ม') || name.includes('กิน') || name.includes('ขนม')) {
+    return <Coffee className="w-7 h-7 text-amber-600" />
+  }
+  if (name.includes('รถ') || name.includes('ยาน') || name.includes('ขนส่ง') || name.includes('อะไหล่')) {
+    return <Car className="w-7 h-7 text-gray-600" />
+  }
+  if (name.includes('เด็ก') || name.includes('ทารก') || name.includes('แม่และเด็ก')) {
+    return <Baby className="w-7 h-7 text-pink-600" />
+  }
+  if (name.includes('ความงาม') || name.includes('เครื่องสำอาง') || name.includes('ดูแลผิว')) {
+    return <Scissors className="w-7 h-7 text-rose-600" />
+  }
+  if (name.includes('ศิลปะ') || name.includes('งานฝีมือ') || name.includes('สร้างสรรค์')) {
+    return <Palette className="w-7 h-7 text-cyan-600" />
+  }
+  if (name.includes('กีฬา') || name.includes('ออกกำลัง') || name.includes('ฟิตเนส')) {
+    return <Dumbbell className="w-7 h-7 text-red-600" />
+  }
+  if (name.includes('ธุรกิจ') || name.includes('ออฟฟิศ') || name.includes('งาน')) {
+    return <Briefcase className="w-7 h-7 text-slate-600" />
+  }
+  if (name.includes('กล้อง') || name.includes('ถ่ายรูป') || name.includes('วิดีโอ')) {
+    return <Camera className="w-7 h-7 text-emerald-600" />
+  }
+  if (name.includes('เพลง') || name.includes('เสียง') || name.includes('ดนตรี')) {
+    return <Music className="w-7 h-7 text-violet-600" />
+  }
+  if (name.includes('ครัว') || name.includes('เครื่องใช้') || name.includes('อุปกรณ์')) {
+    return <Utensils className="w-7 h-7 text-orange-500" />
+  }
+  if (name.includes('สวน') || name.includes('ต้นไม้') || name.includes('ดอกไม้')) {
+    return <Flower className="w-7 h-7 text-green-500" />
+  }
+  if (name.includes('เครื่องมือ') || name.includes('ช่าง') || name.includes('ซ่อม')) {
+    return <Wrench className="w-7 h-7 text-gray-700" />
+  }
+  if (name.includes('ความปลอดภัย') || name.includes('รักษาความปลอดภัย')) {
+    return <Shield className="w-7 h-7 text-blue-700" />
+  }
+  if (name.includes('ท่องเที่ยว') || name.includes('เดินทาง')) {
+    return <Globe className="w-7 h-7 text-teal-600" />
+  }
+  
+  // Default icon for unknown categories
+  return <Package className="w-7 h-7 text-orange-600" />
+}
 
 /* ------------------------------- Skeletons ------------------------------- */
 function SkeletonCard() {
@@ -67,6 +188,154 @@ function EmptyMessage({ title, subtitle }: { title: string; subtitle?: string })
       <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
       {subtitle && <p className="text-slate-500 text-sm max-w-md mx-auto">{subtitle}</p>}
     </motion.div>
+  )
+}
+
+/* ------------------------------- Announcement Popup ------------------------------- */
+function AnnouncementPopup({
+  announcement,
+  onClose,
+}: {
+  announcement: Announcement
+  onClose: () => void
+}) {
+  const getIcon = () => {
+    switch (announcement.type) {
+      case 'success':
+        return <CheckCircle2 className="w-8 h-8 text-green-500" />
+      case 'warning':
+        return <AlertCircle className="w-8 h-8 text-yellow-500" />
+      case 'urgent':
+        return <AlertCircle className="w-8 h-8 text-red-500" />
+      default:
+        return <Bell className="w-8 h-8 text-blue-500" />
+    }
+  }
+
+  const getColors = () => {
+    switch (announcement.type) {
+      case 'success':
+        return {
+          bg: 'from-green-50 to-emerald-50',
+          border: 'border-green-200',
+          header: 'from-green-500 to-emerald-500',
+        }
+      case 'warning':
+        return {
+          bg: 'from-yellow-50 to-amber-50',
+          border: 'border-yellow-200',
+          header: 'from-yellow-500 to-amber-500',
+        }
+      case 'urgent':
+        return {
+          bg: 'from-red-50 to-rose-50',
+          border: 'border-red-200',
+          header: 'from-red-500 to-rose-500',
+        }
+      default:
+        return {
+          bg: 'from-blue-50 to-indigo-50',
+          border: 'border-blue-200',
+          header: 'from-blue-500 to-indigo-500',
+        }
+    }
+  }
+
+  const colors = getColors()
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          transition={{ type: "spring", duration: 0.5 }}
+          className={`relative w-full max-w-md bg-gradient-to-br ${colors.bg} rounded-2xl border-2 ${colors.border} shadow-2xl overflow-hidden`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className={`bg-gradient-to-r ${colors.header} p-6 text-white relative`}>
+            <div className="flex items-center gap-4">
+              <div className="bg-white/20 p-2 rounded-full">
+                {getIcon()}
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold">{announcement.title}</h2>
+                <p className="text-white/90 text-sm">
+                  ประกาศจากผู้ดูแลระบบ
+                </p>
+              </div>
+            </div>
+            
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+            >
+              <X className="w-5 h-5 text-white" />
+            </button>
+
+            {/* Decorative elements */}
+            <div className="absolute -top-8 -right-8 w-16 h-16 rounded-full bg-white/10"></div>
+            <div className="absolute -bottom-4 -left-4 w-12 h-12 rounded-full bg-white/10"></div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6">
+            <div className="prose prose-sm max-w-none">
+              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {announcement.content}
+              </div>
+            </div>
+            
+            {/* Image */}
+            {announcement.image && (
+              <div className="mt-4">
+                <img 
+                  src={announcement.image} 
+                  alt={announcement.title}
+                  className="w-full h-48 object-cover rounded-xl border border-gray-200 shadow-sm"
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    img.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* Date info */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <p className="text-xs text-gray-500">
+                ประกาศเมื่อ: {new Date(announcement.createdAt).toLocaleDateString('th-TH', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+
+            {/* Action button */}
+            <div className="mt-6">
+              <button
+                onClick={onClose}
+                className={`w-full py-3 px-4 bg-gradient-to-r ${colors.header} text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-200`}
+              >
+                รับทราบ
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -136,7 +405,7 @@ function CategoryMenu({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={cat.icon} alt={cat.name} className="w-7 h-7 object-contain" />
                   ) : (
-                    <span className="text-2xl">🗂️</span>
+                    getCategoryIcon(cat)
                   )}
                 </div>
                 <span className="text-xs font-semibold text-center leading-tight">{cat.name}</span>
@@ -399,6 +668,8 @@ function ProductPageInner() {
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>()
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('popular')
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null)
+  const [showAnnouncement, setShowAnnouncement] = useState(false)
 
   const router = useRouter()
   const params = useSearchParams() // ✅ อยู่ใน Suspense แล้ว
@@ -506,6 +777,65 @@ function ProductPageInner() {
     fetchCategories()
   }, [])
 
+  /* Fetch announcements */
+  useEffect(() => {
+    const fetchAnnouncements = async () => {
+      try {
+        const res = await fetch('/api/announcements')
+        if (!res.ok) return
+        
+        const announcements = await res.json()
+        console.log('Fetched announcements:', announcements) // Debug log
+        if (!Array.isArray(announcements) || announcements.length === 0) return
+        
+        // Find the latest active announcement
+        const now = new Date()
+        const activeAnnouncements = announcements.filter((ann: Announcement) => {
+          if (!ann.isActive) return false
+          
+          // Check date range if specified
+          if (ann.startDate && new Date(ann.startDate) > now) return false
+          if (ann.endDate && new Date(ann.endDate) < now) return false
+          
+          return true
+        })
+        
+        if (activeAnnouncements.length === 0) return
+        
+        // Get the latest announcement
+        const latestAnnouncement = activeAnnouncements.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0]
+        
+        console.log('Latest announcement:', latestAnnouncement) // Debug log
+        
+        // Check if user has already seen this announcement
+        const seenKey = `announcement_seen_${latestAnnouncement._id}`
+        const hasSeenAnnouncement = localStorage.getItem(seenKey) === 'true'
+        
+        if (!hasSeenAnnouncement) {
+          setAnnouncement(latestAnnouncement)
+          setShowAnnouncement(true)
+        }
+      } catch (error) {
+        console.error('Error fetching announcements:', error)
+      }
+    }
+    
+    // Add a small delay to ensure page has loaded
+    const timer = setTimeout(fetchAnnouncements, 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleCloseAnnouncement = () => {
+    if (announcement) {
+      // Mark announcement as seen
+      const seenKey = `announcement_seen_${announcement._id}`
+      localStorage.setItem(seenKey, 'true')
+    }
+    setShowAnnouncement(false)
+  }
+
 
   /* Load cart via CartManager and keep in sync via storage events */
   useEffect(() => {
@@ -562,6 +892,14 @@ function ProductPageInner() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Announcement Popup */}
+      {showAnnouncement && announcement && (
+        <AnnouncementPopup
+          announcement={announcement}
+          onClose={handleCloseAnnouncement}
+        />
+      )}
+
       {/* Enhanced sticky header */}
       <div className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 border-b border-slate-200 shadow-sm">
         <Header user={username} />

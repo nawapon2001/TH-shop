@@ -43,14 +43,16 @@ export const CartManager = {
     const item: CartItem = {
       _id: product._id,
       name: product.name,
-      price: Math.round(
-        product.discountPercent ? product.price * (1 - product.discountPercent / 100) : product.price
+      // Use the price from product if it's already calculated with options,
+      // otherwise apply discount calculation to the base price
+      price: product.price || Math.round(
+        product.discountPercent ? (product.basePrice || product.originalPrice || 0) * (1 - product.discountPercent / 100) : (product.basePrice || product.originalPrice || 0)
       ),
       image: product.image,
       images: product.images,
       quantity,
-  // capture seller metadata when available so orders can be attributed to sellers
-  seller: product.seller || product.sellerUsername || product.username || undefined,
+      // capture seller metadata when available so orders can be attributed to sellers
+      seller: product.seller || product.sellerUsername || product.username || undefined,
       selectedOptions: product.selectedOptions || undefined,
       discountPercent: product.discountPercent
     }

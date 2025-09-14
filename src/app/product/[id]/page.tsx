@@ -14,7 +14,16 @@ import { Store } from 'lucide-react'
 // -------------------------------
 // Types
 // -------------------------------
-type ProductOption = { name: string; values: string[] }
+type ProductOptionValue = {
+  value: string
+  price: number
+  priceType: 'add' | 'replace'
+}
+
+type ProductOption = { 
+  name: string; 
+  values: ProductOptionValue[] 
+}
 
 type Product = {
   _id: string
@@ -43,15 +52,48 @@ const ensureString = (v: unknown) => (v == null ? '' : String(v))
 // กันเคส backend อื่น ๆ ที่ยังไม่ normalize (เผื่อไว้)
 function normalizeOptionsUI(raw: any): ProductOption[] {
   if (Array.isArray(raw) && raw.every((o) => typeof o === 'object' && Array.isArray(o?.values))) {
-    return (raw as any[]).map((o) => ({ name: ensureString(o.name), values: (o.values ?? []).map(ensureString) }))
+    return (raw as any[]).map((o) => ({ 
+      name: ensureString(o.name), 
+      values: (o.values ?? []).map((v: any) => {
+        // รองรับทั้งแบบเก่า (string) และแบบใหม่ (object)
+        if (typeof v === 'string') {
+          return { value: ensureString(v), price: 0, priceType: 'add' as const }
+        } else if (typeof v === 'object' && v !== null && v.value) {
+          return {
+            value: ensureString(v.value),
+            price: Number(v.price) || 0,
+            priceType: (v.priceType === 'replace' ? 'replace' : 'add') as 'add' | 'replace'
+          }
+        }
+        return { value: ensureString(v), price: 0, priceType: 'add' as const }
+      })
+    }))
   }
   if (Array.isArray(raw) && raw.every((v) => typeof v === 'string' || typeof v === 'number')) {
-    return [{ name: 'ตัวเลือก', values: (raw as Array<string|number>).map(ensureString) }]
+    return [{ 
+      name: 'ตัวเลือก', 
+      values: (raw as Array<string|number>).map(v => ({
+        value: ensureString(v),
+        price: 0,
+        priceType: 'add' as const
+      }))
+    }]
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     return Object.entries(raw).map(([k, vals]) => ({
       name: ensureString(k),
-      values: Array.isArray(vals) ? (vals as any[]).map(ensureString) : []
+      values: Array.isArray(vals) ? (vals as any[]).map((v: any) => {
+        if (typeof v === 'string') {
+          return { value: ensureString(v), price: 0, priceType: 'add' as const }
+        } else if (typeof v === 'object' && v !== null && v.value) {
+          return {
+            value: ensureString(v.value),
+            price: Number(v.price) || 0,
+            priceType: (v.priceType === 'replace' ? 'replace' : 'add') as 'add' | 'replace'
+          }
+        }
+        return { value: ensureString(v), price: 0, priceType: 'add' as const }
+      }) : []
     }))
   }
   return []
@@ -154,6 +196,9 @@ export default function ProductDetailPage() {
         }
 
   const normalizedOptions = normalizeOptionsUI(data.options)
+  console.log('Raw product data:', data) // Debug log
+  console.log('Raw options:', data.options) // Debug log  
+  console.log('Normalized options:', normalizedOptions) // Debug log
 
         const enriched: Product = {
           ...data,
@@ -173,7 +218,7 @@ export default function ProductDetailPage() {
         if (normalizedOptions.length) {
           const init: Record<string, string> = {}
           normalizedOptions.forEach((o) => {
-            if (o.values?.length) init[o.name] = ensureString(o.values[0])
+            if (o.values?.length) init[o.name] = o.values[0].value
           })
           setSelectedOptions(init)
         } else {
@@ -226,12 +271,37 @@ export default function ProductDetailPage() {
 
     const mainImage = normalizeSrc(images[mainIndex]) || 'https://via.placeholder.com/600x600?text=No+Image'
 
-  // Price
+  // Price calculation based on selected options
+  const calculatePrice = useMemo(() => {
+    if (!product) return product?.price || 0
+    
+    let finalPrice = product.price
+    
+    if (product.options && product.options.length > 0) {
+      product.options.forEach((option) => {
+        const selectedValue = selectedOptions[option.name]
+        if (selectedValue) {
+          const selectedOptionValue = option.values.find(v => v.value === selectedValue)
+          if (selectedOptionValue) {
+            if (selectedOptionValue.priceType === 'replace') {
+              finalPrice = selectedOptionValue.price
+            } else {
+              finalPrice += selectedOptionValue.price
+            }
+          }
+        }
+      })
+    }
+    
+    return finalPrice
+  }, [product, selectedOptions])
+
+  // Final discounted price
   const discountedPrice = useMemo(() => {
-    if (!product) return 0
-    if (!product.discountPercent) return product.price
-    return Math.round(product.price * (1 - product.discountPercent / 100))
-  }, [product])
+    const basePrice = calculatePrice
+    if (!product?.discountPercent) return basePrice
+    return Math.round(basePrice * (1 - product.discountPercent / 100))
+  }, [calculatePrice, product?.discountPercent])
 
   // Option gating: ถ้าไม่มีตัวเลือก -> ซื้อได้เลย
   const requiresOptions = (product?.options?.length ?? 0) > 0
@@ -267,6 +337,7 @@ export default function ProductDetailPage() {
     }
     CartManager.addProduct({
       ...product,
+      price: discountedPrice, // Use calculated price with options and discount
       selectedOptions,
       // attach seller username when available (sellerInfo fetched separately)
       seller: (product as any).seller || (product as any).sellerUsername || sellerInfo?.username || (product as any).username || undefined,
@@ -279,11 +350,14 @@ export default function ProductDetailPage() {
       alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนสั่งซื้อ')
       return
     }
+    // Add to cart with calculated price first
     CartManager.addProduct({
       ...product,
+      price: discountedPrice, // Use calculated price with options and discount
       selectedOptions,
       seller: (product as any).seller || (product as any).sellerUsername || sellerInfo?.username || (product as any).username || undefined,
     } as any, quantity)
+    // Then navigate to checkout
     router.push('/checkout')
   }
 
@@ -436,7 +510,7 @@ export default function ProductDetailPage() {
               <div className="mt-4 p-4 border rounded-lg bg-white">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded overflow-hidden bg-orange-50 border">
-                    {sellerInfo.image ? <img src={normalizeSrc(sellerInfo.image)} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-3" />}
+                    {sellerInfo.shopImage || sellerInfo.image ? <img src={normalizeSrc(sellerInfo.shopImage || sellerInfo.image)} alt={sellerInfo.shopName || sellerInfo.username} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-3" />}
                   </div>
                   <div>
                     <div className="font-semibold">{sellerInfo.shopName || sellerInfo.username}</div>
@@ -457,10 +531,15 @@ export default function ProductDetailPage() {
               </div>
               {product.discountPercent ? (
                 <div className="flex items-center gap-2">
-                  <span className="line-through text-gray-400">฿{formatTHB(product.price)}</span>
+                  <span className="line-through text-gray-400">฿{formatTHB(calculatePrice)}</span>
                   <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-600 text-white">
                     <Tag className="w-3.5 h-3.5" /> -{product.discountPercent}%
                   </span>
+                </div>
+              ) : calculatePrice !== product.price ? (
+                <div className="flex items-center gap-2">
+                  <span className="line-through text-gray-400">฿{formatTHB(product.price)}</span>
+                  <span className="text-sm text-green-600 font-medium">ตามตัวเลือก</span>
                 </div>
               ) : null}
             </div>
@@ -479,9 +558,9 @@ export default function ProductDetailPage() {
 
             {/* Options */}
             {product.options?.length ? (
-              <div className="space-y-4 pt-2 relative z-10">
+              <div className="space-y-4 pt-2">
                 {product.options.map((opt) => (
-                  <div key={opt.name} className="pointer-events-auto">
+                  <div key={opt.name}>
                     <div className="font-semibold mb-1">
                       {opt.name}
                       {selectedOptions[opt.name] ? (
@@ -490,27 +569,39 @@ export default function ProductDetailPage() {
                     </div>
 
                     <div className="flex gap-2 flex-wrap">
-                      {(opt.values || []).map((rawVal, i) => {
-                        const val = ensureString(rawVal)
-                        const active = selectedOptions[opt.name] === val
+                      {(opt.values || []).map((optionValue, i) => {
+                        const active = selectedOptions[opt.name] === optionValue.value
+                        
+                        // คำนวณราคาที่แสดง
+                        let displayPrice = ''
+                        if (optionValue.price !== 0) {
+                          if (optionValue.priceType === 'replace') {
+                            displayPrice = ` (฿${optionValue.price.toLocaleString()})`
+                          } else {
+                            displayPrice = ` (+฿${optionValue.price.toLocaleString()})`
+                          }
+                        }
 
                         return (
                           <button
-                            key={`${opt.name}-${val}-${i}`}
+                            key={`${opt.name}-${optionValue.value}-${i}`}
                             type="button"
-                            style={{ WebkitTapHighlightColor: 'transparent' }}
-                            className={`px-3 h-9 rounded-full border text-sm font-medium transition ${
+                            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 cursor-pointer select-none ${
                               active
-                                ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                                : 'bg-white text-gray-700 border-orange-200 hover:bg-orange-50'
+                                ? 'bg-orange-600 text-white border-orange-600 shadow-md ring-2 ring-orange-200'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50 hover:border-orange-400 hover:shadow-sm active:scale-95'
                             }`}
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))
+                            onClick={() => {
+                              console.log('Clicked option:', opt.name, optionValue.value) // Debug log
+                              setSelectedOptions((prev) => {
+                                const newState = { ...prev, [opt.name]: optionValue.value }
+                                console.log('New selected options:', newState) // Debug log
+                                return newState
+                              })
                             }}
+                            onTouchStart={() => {}} // เพื่อ improve mobile response
                           >
-                            {val}
+                            {optionValue.value}{displayPrice}
                           </button>
                         )
                       })}

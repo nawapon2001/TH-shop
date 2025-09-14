@@ -17,6 +17,8 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, '') || '' // e.g. "http://192.168.1.110:3001"
 
 /** Types */
+type SelectedOptions = Record<string, string>
+
 type CartItem = {
   _id: string
   name: string
@@ -26,6 +28,8 @@ type CartItem = {
   description?: string
   qty: number
   seller?: string
+  selectedOptions?: SelectedOptions
+  discountPercent?: number
 }
 
 type ProfileStorage = {
@@ -236,12 +240,14 @@ export default function CheckoutPage() {
       const itemsToSend = cart.map(it => ({
         _id: it._id,
         name: it.name,
-        price: it.price,
+        price: it.price, // Already calculated with options and discount
         image: it.image || (it.images && it.images[0]) || '',
         qty: it.qty || 1,
         // preserve any existing productId/seller fields if present
         productId: (it as any).productId || (it as any)._id || undefined,
         seller: (it as any).seller || (it as any).username || undefined,
+        selectedOptions: it.selectedOptions || undefined,
+        discountPercent: it.discountPercent || undefined,
       }))
 
       // Group items by seller to create separate orders per shop
@@ -271,7 +277,7 @@ export default function CheckoutPage() {
               if (!res.ok) return null
               const data = await res.json().catch(() => null)
               return { username, data }
-            } catch (e) {
+            } catch {
               return null
             }
           })
@@ -344,15 +350,22 @@ export default function CheckoutPage() {
           if (slipFile && i === 0) form.append('slip', slipFile)
           if (orderData.sellers) form.append('sellers', JSON.stringify(orderData.sellers))
 
-          // dev-only debug: preview payload being sent
           if (process.env.NODE_ENV !== 'production') {
             try {
               console.debug(`[checkout] sending multipart order ${i + 1}/${ordersToCreate.length} (seller: ${orderData.seller || 'none'}):`, {
                 order: JSON.parse(String(form.get('order'))),
                 sellers: form.get('sellers') ? JSON.parse(String(form.get('sellers'))) : undefined,
-                slipAttached: !!form.get('slip')
+                slipAttached: !!form.get('slip'),
+                itemsWithOptions: orderData.items.map(item => ({
+                  name: item.name,
+                  selectedOptions: item.selectedOptions,
+                  price: item.price,
+                  qty: item.qty
+                }))
               })
-            } catch (e) {}
+            } catch {
+              console.debug('Failed to log debug info')
+            }
           }
 
           const result = await postOrder(form, true)
@@ -374,9 +387,16 @@ export default function CheckoutPage() {
             try {
               console.debug(`[checkout] sending json order ${i + 1}/${ordersToCreate.length} (seller: ${orderData.seller || 'none'}):`, { 
                 ...jsonPayload, 
-                items: (jsonPayload.items || []).slice(0,5) 
+                items: (jsonPayload.items || []).map(item => ({
+                  name: item.name,
+                  selectedOptions: item.selectedOptions,
+                  price: item.price,
+                  qty: item.qty
+                }))
               })
-            } catch (e) {}
+            } catch {
+              console.debug('Failed to log debug info')
+            }
           }
 
           const result = await postOrder(jsonPayload, false)
@@ -519,71 +539,120 @@ export default function CheckoutPage() {
 
               {/* PromptPay QR */}
               {payment === 'transfer' && (
-                <div className="mt-4 rounded-xl bg-orange-50/60 p-4 space-y-4 ring-1 ring-orange-100">
-                  <div>
-                    <div className="flex items-center gap-2 text-orange-900 font-semibold mb-2">
-                      <QrCode className="w-4 h-4" /> สแกนจ่ายด้วย PromptPay
+                <div className="mt-6 rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-6 ring-1 ring-orange-100 shadow-sm">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 text-orange-900 font-bold mb-3">
+                      <QrCode className="w-5 h-5" /> 
+                      <span>สแกนจ่ายด้วย PromptPay</span>
                     </div>
-                    <div className="text-sm text-gray-700 mb-3">
-                      ยอดชำระ <span className="font-semibold">฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                    
+                    <div className="inline-block bg-white rounded-xl p-4 shadow-md ring-1 ring-orange-200 mb-4">
                       <img
                         src={promptPayQRUrl}
                         alt={`PromptPay QR สำหรับยอด ${expectedAmountStr} บาท`}
-                        className="w-56 h-56 rounded-xl border bg-white object-contain"
+                        className="w-48 h-48 rounded-lg object-contain mx-auto"
                       />
+                    </div>
+                    
+                    <div className="bg-white/70 backdrop-blur rounded-lg p-3 inline-block">
+                      <div className="text-sm text-gray-700 mb-1">ยอดชำระ</div>
+                      <div className="text-2xl font-bold text-orange-700">
+                        ฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
                     </div>
                   </div>
 
                   {/* Upload & Verify */}
-                  <div className="rounded-xl border border-orange-200 bg-white p-3">
-                    <div className="flex items-center gap-2 font-semibold text-gray-800 mb-2"><Upload className="w-4 h-4"/> อัปโหลดสลิปการโอน</div>
-                    <input type="file" accept="image/*,application/pdf" onChange={onSlipChange} className="block w-full text-sm" />
+                  <div className="mt-6 rounded-xl border border-orange-200 bg-white/80 backdrop-blur p-4 shadow-sm">
+                    <div className="flex items-center gap-2 font-bold text-gray-800 mb-3">
+                      <Upload className="w-4 h-4 text-orange-600"/> 
+                      <span>อัปโหลดสลิปการโอน</span>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          accept="image/*,application/pdf" 
+                          onChange={onSlipChange} 
+                          className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 file:transition-colors border border-orange-200 rounded-lg bg-white" 
+                        />
+                        <div className="mt-2 text-xs text-gray-500">
+                          รองรับไฟล์ JPG, PNG, PDF ขนาดไม่เกิน 10MB
+                        </div>
+                      </div>
 
-                    {(slipPreview || slipHash) && (
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
-                        <div className="sm:col-span-2">
+                      {(slipPreview || slipHash) && (
+                        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                          <div className="text-sm font-medium text-gray-800">ตัวอย่างสลิป</div>
+                          
                           {slipPreview && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={slipPreview} alt="สลิปตัวอย่าง" className="w-full max-h-56 object-contain rounded border" />
+                            <div className="flex justify-center">
+                              <img 
+                                src={slipPreview} 
+                                alt="สลิปตัวอย่าง" 
+                                className="max-w-full max-h-48 object-contain rounded-lg border shadow-sm" 
+                              />
+                            </div>
+                          )}
+                          
+                          {slipHash && (
+                            <div className="bg-white rounded-lg p-3 border">
+                              <div className="text-xs font-medium text-gray-700 mb-1">รหัสไฟล์ (SHA-256)</div>
+                              <div className="font-mono text-xs text-gray-600 break-all">
+                                {slipHash}
+                              </div>
+                            </div>
                           )}
                         </div>
-                        <div className="text-xs text-gray-600 break-words">
-                          <div className="font-semibold text-gray-800 mb-1">รหัสไฟล์ (SHA-256)</div>
-                          <div className="font-mono">{slipHash ? `${slipHash.slice(0, 24)}…${slipHash.slice(-8)}` : '-'}</div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                        <div className="sm:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            จำนวนเงินที่โอน (บาท)
+                          </label>
+                          <input
+                            value={transferAmountInput}
+                            onChange={(e) => { setTransferAmountInput(e.target.value); setAmountVerified(null) }}
+                            placeholder={expectedAmountStr}
+                            inputMode="decimal"
+                            className="w-full h-11 px-4 rounded-lg border border-orange-200 focus:ring-2 focus:ring-orange-300 outline-none text-sm bg-white shadow-sm"
+                          />
+                          <div className="mt-1 text-xs text-gray-500">
+                            ยอดที่ต้องชำระ: <span className="font-semibold text-orange-600">฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        
+                        <button 
+                          type="button" 
+                          onClick={verifyAmountLocally} 
+                          className="h-11 rounded-lg bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white text-sm font-semibold px-4 shadow-md transition-all transform hover:scale-105 active:scale-95"
+                        >
+                          ตรวจสอบยอด
+                        </button>
+                      </div>
+
+                      {amountVerified !== null && (
+                        <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium border ${amountVerified 
+                          ? 'bg-green-50 text-green-700 border-green-200 shadow-sm' 
+                          : 'bg-red-50 text-red-700 border-red-200 shadow-sm'
+                        }`}>
+                          {amountVerified ? <CheckCircle2 className="w-4 h-4"/> : <XCircle className="w-4 h-4"/>}
+                          {amountVerified 
+                            ? 'จำนวนเงินตรงกับยอดที่ต้องชำระ ✓' 
+                            : `ยอดไม่ตรง (ต่าง ${Math.abs(diff).toFixed(2)} บาท)`
+                          }
+                        </div>
+                      )}
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="text-xs text-blue-700">
+                          <div className="font-semibold mb-1">💡 หมายเหตุ:</div>
+                          <div>ระบบนี้ตรวจสอบยอดจากจำนวนเงินที่คุณกรอกและไฟล์สลิปเท่านั้น หากต้องการตรวจสอบอัตโนมัติโดย OCR/เว็บฮุคจากธนาคาร ให้เชื่อมต่อฝั่งเซิร์ฟเวอร์เพิ่มเติม</div>
                         </div>
                       </div>
-                    )}
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-gray-700 mb-1">จำนวนเงินที่โอน (บาท)</label>
-                        <input
-                          value={transferAmountInput}
-                          onChange={(e) => { setTransferAmountInput(e.target.value); setAmountVerified(null) }}
-                          placeholder={expectedAmountStr}
-                          inputMode="decimal"
-                          className="w-full h-11 px-4 rounded-lg border border-orange-200 focus:ring-2 focus:ring-orange-300 outline-none text-sm bg-white"
-                        />
-                        <div className="mt-1 text-xs text-gray-500">ยอดที่ต้องชำระ: <span className="font-semibold">฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                      </div>
-                      <button type="button" onClick={verifyAmountLocally} className="h-11 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold px-4 shadow-sm transition">
-                        ตรวจสอบยอด
-                      </button>
                     </div>
-
-                    {amountVerified !== null && (
-                      <div className={'mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ' + (amountVerified ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200')}>
-                        {amountVerified ? <CheckCircle2 className="w-4 h-4"/> : <XCircle className="w-4 h-4"/>}
-                        {amountVerified ? 'จำนวนเงินตรงกับยอดที่ต้องชำระ' : `ยอดไม่ตรง (ต่าง ${Math.abs(diff).toFixed(2)} บาท)`}
-                      </div>
-                    )}
-
-                    <p className="mt-3 text-[11px] text-gray-500">
-                      หมายเหตุ: ระบบนี้ตรวจสอบยอดจากจำนวนเงินที่คุณกรอกและไฟล์สลิปเท่านั้น หากต้องการตรวจสอบอัตโนมัติโดย OCR/เว็บฮุคจากธนาคาร ให้เชื่อมต่อฝั่งเซิร์ฟเวอร์เพิ่มเติม
-                    </p>
                   </div>
                 </div>
               )}
@@ -599,21 +668,79 @@ export default function CheckoutPage() {
                 </h2>
 
                 {/* Items */}
-                <ul className="divide-y">
+                <ul className="divide-y divide-gray-100">
                   {cart.length === 0 ? (
-                    <li className="py-4 text-gray-500">ไม่มีสินค้าในตะกร้า</li>
+                    <li className="py-4 text-gray-500 text-center">ไม่มีสินค้าในตะกร้า</li>
                   ) : (
                     cart.map((item) => {
                       const img = item.images?.[0] || item.image || 'https://via.placeholder.com/80x80?text=No+Image'
+                      const finalPrice = item.price * (item.qty || 1)
+                      const hasDiscount = item.discountPercent && item.discountPercent > 0
+                      
                       return (
-                        <li key={item._id} className="py-3 flex items-center gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={img} alt={item.name} className="w-14 h-14 rounded border object-cover" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 line-clamp-1">{item.name}</div>
-                            <div className="text-xs text-gray-500">จำนวน {item.qty || 1} ชิ้น</div>
+                        <li key={`${item._id}-${JSON.stringify(item.selectedOptions || {})}`} className="py-4">
+                          <div className="flex items-start gap-4">
+                            {/* Product Image */}
+                            <div className="flex-shrink-0">
+                              <img 
+                                src={img} 
+                                alt={item.name} 
+                                className="w-16 h-16 rounded-lg border object-cover shadow-sm" 
+                              />
+                            </div>
+                            
+                            {/* Product Details */}
+                            <div className="flex-1 min-w-0">
+                              <div className="mb-2">
+                                <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight">
+                                  {item.name}
+                                </h3>
+                                
+                                {/* Product Options */}
+                                {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                                  <div className="mt-1 space-y-1">
+                                    {Object.entries(item.selectedOptions).map(([optionName, optionValue]) => (
+                                      <div key={optionName} className="flex items-center gap-2 text-xs">
+                                        <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium border border-orange-100">
+                                          {optionName}
+                                        </span>
+                                        <span className="text-gray-600">{optionValue}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                {/* Quantity and seller info */}
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-orange-400 rounded-full"></span>
+                                    จำนวน {item.qty || 1} ชิ้น
+                                  </span>
+                                  {item.seller && (
+                                    <span className="flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                                      ร้าน {item.seller}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Price */}
+                            <div className="flex-shrink-0 text-right">
+                              <div className="text-sm font-bold text-gray-900">
+                                ฿{finalPrice.toLocaleString()}
+                              </div>
+                              {hasDiscount && (
+                                <div className="text-xs text-green-600 font-medium">
+                                  ส่วนลด {item.discountPercent}%
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                ฿{item.price.toLocaleString()} × {item.qty}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-sm font-semibold text-gray-800">{item.price.toLocaleString()} ฿</div>
                         </li>
                       )
                     })
@@ -621,68 +748,130 @@ export default function CheckoutPage() {
                 </ul>
 
                 {/* Totals */}
-                <div className="mt-4 space-y-1 text-sm">
-                  <Row label="ยอดสินค้า" value={`฿${subtotal.toLocaleString()}`} />
-                  {sellerCount > 1 ? (
+                <div className="mt-6 space-y-3 text-sm">
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <Row label="ยอดสินค้า" value={`฿${subtotal.toLocaleString()}`} />
+                    
+                    {sellerCount > 1 ? (
+                      <div className="space-y-1">
+                        <Row 
+                          label={`ค่าจัดส่ง (${sellerCount} คำสั่ง)`} 
+                          value={`฿${shipCost.toLocaleString()} × ${sellerCount} = ฿${totalShipCost.toLocaleString()}`} 
+                        />
+                        <div className="text-xs text-orange-600 italic pl-2 border-l-2 border-orange-200">
+                          * สินค้าจากร้านค้าต่างกันจะแยกเป็นคำสั่งซื้อแยกกัน
+                        </div>
+                      </div>
+                    ) : (
+                      <Row label="ค่าจัดส่ง" value={`฿${totalShipCost.toLocaleString()}`} />
+                    )}
+                    
                     <Row 
-                      label={`ค่าจัดส่ง (${sellerCount} คำสั่ง)`} 
-                      value={`฿${shipCost.toLocaleString()} × ${sellerCount} = ฿${totalShipCost.toLocaleString()}`} 
+                      label="ค่าธรรมเนียม COD" 
+                      value={codFee > 0 ? `฿${codFee.toLocaleString()}` : 'ไม่มี'} 
+                      valueClass={codFee > 0 ? "text-amber-600" : "text-gray-500"}
                     />
-                  ) : (
-                    <Row label="ค่าจัดส่ง" value={`฿${totalShipCost.toLocaleString()}`} />
-                  )}
-                  <Row label="ค่าธรรมเนียม COD" value={codFee > 0 ? `฿${codFee.toLocaleString()}` : '-'} />
+                  </div>
+                  
+                  <div className="border-t-2 border-orange-100 pt-3">
+                    <Row
+                      label="ยอดชำระทั้งหมด"
+                      value={`฿${total.toLocaleString()}`}
+                      bold
+                      valueClass="text-orange-700 text-lg"
+                    />
+                  </div>
+                  
                   {sellerCount > 1 && (
-                    <div className="text-xs text-orange-600 italic">
-                      * จะแยกเป็น {sellerCount} คำสั่งซื้อตามร้านค้า
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-start gap-2">
+                        <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                          <span className="text-white text-xs font-bold">!</span>
+                        </div>
+                        <div className="text-xs text-blue-700">
+                          <div className="font-semibold mb-1">หมายเหตุสำคัญ:</div>
+                          <div>จะแยกเป็น <span className="font-semibold">{sellerCount} คำสั่งซื้อ</span> ตามร้านค้า เพื่อให้แต่ละร้านจัดการคำสั่งซื้อของตนเองได้อย่างอิสระ</div>
+                        </div>
+                      </div>
                     </div>
                   )}
-                  <div className="h-px bg-orange-100 my-2" />
-                  <Row
-                    label="ยอดชำระทั้งหมด"
-                    value={`฿${total.toLocaleString()}`}
-                    bold
-                    valueClass="text-orange-700"
-                  />
                 </div>
 
                 {/* QR (mobile emphasize) */}
                 {payment === 'transfer' && (
-                  <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/50 p-3">
-                    <div className="flex items-center gap-2 text-orange-900 font-semibold mb-2">
-                      <QrCode className="w-4 h-4" /> QR ชำระเงิน (PromptPay)
+                  <div className="mt-6 rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-orange-900 font-bold mb-3">
+                      <QrCode className="w-4 h-4" /> 
+                      <span>QR ชำระเงิน (PromptPay)</span>
                     </div>
                     <div className="flex items-center justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={promptPayQRUrl}
-                        alt={`PromptPay QR สำหรับยอด ${expectedAmountStr} บาท`}
-                        className="w-48 h-48 rounded-xl border bg-white object-contain"
-                      />
+                      <div className="bg-white rounded-lg p-3 shadow-md ring-1 ring-orange-200">
+                        <img
+                          src={promptPayQRUrl}
+                          alt={`PromptPay QR สำหรับยอด ${expectedAmountStr} บาท`}
+                          className="w-40 h-40 rounded-lg border bg-white object-contain"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-center mt-3">
+                      <div className="text-sm font-semibold text-orange-700">
+                        ฿{Number(expectedAmountStr).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={primaryBtnDisabled}
-                  className={
-                    'mt-4 w-full h-12 rounded-xl text-white font-semibold shadow-lg inline-flex items-center justify-center gap-2 transition ' +
-                    (primaryBtnDisabled
-                      ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600')
-                  }
-                >
-                  {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  ยืนยันสั่งซื้อ
-                </button>
+                {/* Submit Button */}
+                <div className="mt-6 space-y-3">
+                  <button
+                    type="submit"
+                    disabled={primaryBtnDisabled}
+                    className={
+                      'w-full h-14 rounded-xl text-white font-bold shadow-lg inline-flex items-center justify-center gap-3 transition-all duration-200 ' +
+                      (primaryBtnDisabled
+                        ? 'bg-gray-300 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 hover:from-orange-700 hover:via-orange-600 hover:to-amber-600 transform hover:scale-[1.02] active:scale-[0.98] shadow-orange-200')
+                    }
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>กำลังสั่งซื้อ...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        <span>ยืนยันสั่งซื้อ</span>
+                      </>
+                    )}
+                  </button>
 
-                <a
-                  href="/cart"
-                  className="mt-2 block text-center text-sm text-orange-700 hover:underline"
-                >
-                  แก้ไขตะกร้า
-                </a>
+                  {/* Status Messages */}
+                  <div className="space-y-2 text-center">
+                    {primaryBtnDisabled && !loading && (
+                      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        {!name.trim() && "❌ กรุณากรอกชื่อ-นามสกุล"}
+                        {!address.trim() && "❌ กรุณากรอกที่อยู่"}
+                        {!phoneValid && "❌ กรุณากรอกเบอร์โทรให้ถูกต้อง"}
+                        {cart.length === 0 && "❌ ไม่มีสินค้าในตะกร้า"}
+                        {transferBlocked && "❌ กรุณาอัปโหลดสลิปและตรวจสอบยอดเงิน"}
+                      </div>
+                    )}
+                    
+                    {!primaryBtnDisabled && !loading && (
+                      <div className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                        ✅ พร้อมสั่งซื้อ - กดปุ่มเพื่อยืนยันคำสั่งซื้อ
+                      </div>
+                    )}
+                  </div>
+
+                  <a
+                    href="/cart"
+                    className="block text-center text-sm text-orange-700 hover:text-orange-900 hover:underline transition-colors font-medium"
+                  >
+                    🛒 แก้ไขตะกร้าสินค้า
+                  </a>
+                </div>
               </div>
             </div>
           </aside>
@@ -693,25 +882,51 @@ export default function CheckoutPage() {
 
       {/* Mobile bottom CTA */}
       {cart.length > 0 && (
-        <div className="md:hidden fixed bottom-4 inset-x-4 z-40 bg-white/95 backdrop-blur border border-orange-100 p-3 rounded-xl shadow-lg">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs text-gray-500">ยอดชำระ</div>
-              <div className="text-lg font-extrabold text-orange-700">฿{total.toLocaleString()}</div>
+        <div className="md:hidden fixed bottom-4 inset-x-4 z-40">
+          <div className="bg-white/95 backdrop-blur-md border border-orange-100 rounded-2xl shadow-2xl ring-1 ring-orange-200/50">
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex-1">
+                  <div className="text-xs text-gray-500 font-medium">ยอดชำระทั้งหมด</div>
+                  <div className="text-xl font-bold text-orange-700">฿{total.toLocaleString()}</div>
+                  {sellerCount > 1 && (
+                    <div className="text-xs text-blue-600">แยก {sellerCount} คำสั่งซื้อ</div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-gray-500">{cart.length} รายการ</div>
+                  <div className="text-sm font-medium text-gray-700">
+                    {cart.reduce((sum, item) => sum + (item.qty || 1), 0)} ชิ้น
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => {
+                  const form = document.querySelector('form') as HTMLFormElement | null
+                  if (form) form.requestSubmit()
+                }}
+                disabled={primaryBtnDisabled}
+                className={
+                  'w-full h-12 rounded-xl text-white font-bold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 ' +
+                  (primaryBtnDisabled 
+                    ? 'bg-gray-300 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-orange-600 to-amber-500 transform active:scale-95')
+                }
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>กำลังสั่งซื้อ...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>ยืนยันสั่งซื้อ</span>
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              onClick={(e) => {
-                const form = document.querySelector('form') as HTMLFormElement | null
-                if (form) form.requestSubmit()
-              }}
-              disabled={primaryBtnDisabled}
-              className={
-                'flex-1 h-12 rounded-full text-white font-semibold shadow-lg transition ' +
-                (primaryBtnDisabled ? 'bg-gray-300' : 'bg-gradient-to-r from-orange-600 to-amber-500')
-              }
-            >
-              ชำระเงิน
-            </button>
           </div>
         </div>
       )}
