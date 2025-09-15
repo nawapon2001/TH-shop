@@ -148,11 +148,15 @@ export default function AdminOrdersPage() {
     if (!result.isConfirmed) return
     try {
       const res = await fetch(`/api/orders?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const errorData = await res.text()
+        throw new Error(`HTTP ${res.status}: ${errorData}`)
+      }
       setOrders(prev => prev.filter(o => o._id !== id))
       Swal.fire({ icon: 'success', title: 'ลบคำสั่งซื้อแล้ว', timer: 1200, showConfirmButton: false })
-    } catch {
-      Swal.fire({ icon: 'error', title: 'ลบคำสั่งซื้อไม่สำเร็จ' })
+    } catch (error) {
+      console.error('Error deleting order:', error)
+      Swal.fire({ icon: 'error', title: 'ลบคำสั่งซื้อไม่สำเร็จ', text: error instanceof Error ? error.message : 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ' })
     }
   }
 

@@ -77,18 +77,35 @@ export default function CheckoutPage() {
     try {
       // Use CartManager to read the canonical cart (uses 'cart_v2')
       const items = CartManager.getCart()
+      console.log('🛒 Checkout - Raw cart items:', items) // Debug log
+      
       const itemsWithQty = Array.isArray(items)
-        ? items.map((it: any) => ({
-            _id: it._id,
-            name: it.name,
-            price: it.price,
-            image: it.image,
-            images: it.images,
-            description: it.description,
-            qty: Math.max(1, Number(it.quantity) || 1),
-            // preserve seller metadata captured by CartManager
-            seller: it.seller || it.sellerUsername || it.username || undefined,
-          }))
+        ? items.map((it: any) => {
+            const processedItem = {
+              _id: it._id,
+              name: it.name,
+              price: it.price, // This should already be calculated from product detail page
+              image: it.image,
+              images: it.images,
+              description: it.description,
+              qty: Math.max(1, Number(it.quantity) || 1),
+              // preserve seller metadata captured by CartManager
+              seller: it.seller || it.sellerUsername || it.username || undefined,
+              // preserve selected options for display
+              selectedOptions: it.selectedOptions,
+              discountPercent: it.discountPercent
+            }
+            
+            console.log('🔍 Processed cart item:', {
+              name: processedItem.name,
+              price: processedItem.price,
+              qty: processedItem.qty,
+              selectedOptions: processedItem.selectedOptions,
+              total: processedItem.price * processedItem.qty
+            }) // Debug log
+            
+            return processedItem
+          })
         : []
       setCart(itemsWithQty)
     } catch { setCart([]) }
@@ -118,7 +135,20 @@ export default function CheckoutPage() {
 
   // Helpers
   const phoneValid = useMemo(() => /^0\d{9}$/.test(phone.trim()), [phone])
-  const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0), [cart])
+  const subtotal = useMemo(() => {
+    const total = cart.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0)
+    console.log('💰 Checkout subtotal calculation:', {
+      cartItems: cart.map(i => ({
+        name: i.name,
+        price: i.price,
+        qty: i.qty,
+        total: (i.price || 0) * (i.qty || 1),
+        selectedOptions: (i as any).selectedOptions
+      })),
+      subtotal: total
+    }) // Debug log
+    return total
+  }, [cart])
   
   // Calculate number of separate orders (by seller)
   const sellerCount = useMemo(() => {

@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
+import prisma from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const client = await clientPromise;
-    if (!client) {
-      return NextResponse.json([], { status: 500 });
-    }
-    
-    const db = client.db('signshop'); // ใช้ชื่อ database ของคุณ
-    const categories = await db.collection('categories').find({}).toArray();
+    const categories = await prisma.category.findMany({
+      orderBy: { createdAt: 'asc' }
+    });
     
     // ส่งกลับข้อมูลเต็มของหมวดหมู่
-    const categoryData = categories.map((cat: any) => ({
+    const categoryData = categories.map((cat) => ({
       name: cat.name,
       icon: cat.icon || null,
       iconType: cat.iconType || null,
@@ -39,36 +35,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'ชื่อหมวดหมู่ไม่ถูกต้อง' }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    if (!client) {
-      return NextResponse.json({ message: 'ไม่สามารถเชื่อมต่อฐานข้อมูล' }, { status: 500 });
-    }
-    
-    const db = client.db('signshop');
-    
     // ตรวจสอบว่ามีหมวดหมู่นี้แล้วหรือไม่
-    const existingCategory = await db.collection('categories').findOne({ name });
+    const existingCategory = await prisma.category.findFirst({
+      where: { name }
+    });
+    
     if (existingCategory) {
       return NextResponse.json({ message: 'หมวดหมู่นี้มีอยู่แล้ว' }, { status: 400 });
     }
 
     // เตรียมข้อมูลหมวดหมู่
     const categoryData: any = { 
-      name, 
-      createdAt: new Date() 
+      name
     };
 
     // เพิ่มข้อมูลไอคอนตามประเภท
     if (iconType === 'system' && iconName) {
       categoryData.iconType = 'system';
-      categoryData.iconName = iconName;
+      categoryData.iconName = iconName as string;
     } else if (iconType === 'upload' && icon) {
       categoryData.iconType = 'upload';
-      categoryData.icon = icon; // ในระบบจริงควรบันทึกเป็น URL หลังจากอัปโหลดไฟล์
+      categoryData.icon = icon as string; // ในระบบจริงควรบันทึกเป็น URL หลังจากอัปโหลดไฟล์
     }
 
     // เพิ่มหมวดหมู่ใหม่
-    await db.collection('categories').insertOne(categoryData);
+    await prisma.category.create({
+      data: categoryData
+    });
 
     return NextResponse.json({ message: 'เพิ่มหมวดหมู่สำเร็จ' });
   } catch (error) {
@@ -86,17 +79,12 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ message: 'กรุณาระบุชื่อหมวดหมู่' }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    if (!client) {
-      return NextResponse.json({ message: 'ไม่สามารถเชื่อมต่อฐานข้อมูล' }, { status: 500 });
-    }
-    
-    const db = client.db('signshop');
-    
     // ลบหมวดหมู่จากฐานข้อมูล
-    const result = await db.collection('categories').deleteOne({ name });
+    const result = await prisma.category.deleteMany({
+      where: { name }
+    });
     
-    if (result.deletedCount === 0) {
+    if (result.count === 0) {
       return NextResponse.json({ message: 'ไม่พบหมวดหมู่ที่ต้องการลบ' }, { status: 404 });
     }
 

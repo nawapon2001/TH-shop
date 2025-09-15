@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MongoClient } from 'mongodb'
+import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017'
-const DB_NAME = process.env.DB_NAME || 'thai'
-const COLLECTION = 'sellers'
-
 export async function POST(req: NextRequest) {
-  let client: MongoClient | null = null
   try {
     const body = await req.json()
     const {
@@ -20,60 +15,80 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'ข้อมูลไม่ครบถ้วน' }, { status: 400 })
     }
 
-    // Connect MongoDB (catch connection error)
-    try {
-      client = await MongoClient.connect(MONGO_URI)
-    } catch (err) {
-      return NextResponse.json({ message: 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ' }, { status: 500 })
-    }
-    const db = client.db(DB_NAME)
-    const sellers = db.collection(COLLECTION)
-
-    // Check duplicate username/email/shopName
-    const exists = await sellers.findOne({
-      $or: [
-        { username },
-        { email },
-        { shopName }
-      ]
+    // Check for duplicate username
+    const existingUsername = await prisma.seller.findUnique({
+      where: { username }
     })
-    if (exists) {
-      client.close()
-      return NextResponse.json({ message: 'ชื่อผู้ใช้/อีเมล/ชื่อร้านนี้ถูกใช้แล้ว' }, { status: 409 })
+
+    if (existingUsername) {
+      return NextResponse.json({ message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' }, { status: 409 })
     }
 
-    // Hash password (catch error)
-    let hashed = ''
+    // Check for duplicate email
+    if (email) {
+      const existingEmail = await prisma.seller.findUnique({
+        where: { email }
+      })
+
+      if (existingEmail) {
+        return NextResponse.json({ message: 'อีเมลนี้ถูกใช้แล้ว' }, { status: 409 })
+      }
+    }
+
+    // Check for duplicate shop name
+    if (shopName) {
+      const existingShop = await prisma.seller.findFirst({
+        where: { shopName }
+      })
+
+      if (existingShop) {
+        return NextResponse.json({ message: 'ชื่อร้านนี้ถูกใช้แล้ว' }, { status: 409 })
+      }
+    }
+
+    // Hash password
+    let hashedPassword = ''
     try {
-      hashed = await bcrypt.hash(password, 10)
-    } catch (err) {
-      client.close()
+      hashedPassword = await bcrypt.hash(password, 10)
+    } catch {
       return NextResponse.json({ message: 'เข้ารหัสรหัสผ่านไม่สำเร็จ' }, { status: 500 })
     }
 
-    // Insert seller (catch error)
+    // Create seller
     try {
-      await sellers.insertOne({
-        username,
-        password: hashed,
-        fullName,
-        email,
-        phone,
-        shopName,
-        birthDate,
-        province,
-        address,
-        createdAt: new Date()
+      const seller = await prisma.seller.create({
+        data: {
+          username,
+          password: hashedPassword,
+          fullName,
+          email,
+          phone,
+          shopName,
+          birthDate,
+          province,
+          address
+        }
       })
-    } catch (err) {
-      client.close()
+
+      // Return success without password
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password: _, ...sellerWithoutPassword } = seller
+      
+      return NextResponse.json({ 
+        ok: true, 
+        message: 'สมัครสมาชิกสำเร็จ',
+        seller: sellerWithoutPassword
+      })
+    } catch (error) {
+      console.error('Error creating seller:', error)
       return NextResponse.json({ message: 'บันทึกข้อมูลไม่สำเร็จ' }, { status: 500 })
     }
 
-    client.close()
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    if (client) client.close()
-    return NextResponse.json({ message: 'เกิดข้อผิดพลาดในการสมัคร' }, { status: 500 })
+  } catch (error) {
+    console.error('Error in seller registration:', error)
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการสมัคร',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }

@@ -606,7 +606,18 @@ export default function AdminPage() {
   useEffect(()=>{ refreshAll() }, [])
 
   // fetch users and sellers for accounts tab
-  const fetchUsers = async () => { try { const r = await fetch('/api/admin-users'); const d = await r.json(); setUsers(Array.isArray(d)?d:[]) } catch { setUsers([]) } }
+  const fetchUsers = async () => { 
+    try { 
+      console.log('Fetching users...')
+      const r = await fetch('/api/admin-users', { cache: 'no-store' }); 
+      const d = await r.json(); 
+      console.log('Users fetched:', d)
+      setUsers(Array.isArray(d)?d:[]) 
+    } catch (error) { 
+      console.error('Error fetching users:', error)
+      setUsers([]) 
+    } 
+  }
   const fetchSellersList = async () => { try { const r = await fetch('/api/sellers'); const d = await r.json(); setSellersList(Array.isArray(d)?d:[]) } catch { setSellersList([]) } }
 
   // fetch announcements
@@ -867,12 +878,16 @@ export default function AdminPage() {
     if (!result.isConfirmed) return
     try {
       const res = await fetch(`/api/orders?id=${encodeURIComponent(orderId)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const errorData = await res.text()
+        throw new Error(`HTTP ${res.status}: ${errorData}`)
+      }
       await fetchOrders()
       if (selectedOrderId === orderId) setSelectedOrderId(null)
       Swal.fire({ icon: 'success', title: 'ลบคำสั่งซื้อแล้ว', timer: 1200, showConfirmButton: false })
-    } catch {
-      Swal.fire({ icon: 'error', title: 'ลบคำสั่งซื้อไม่สำเร็จ' })
+    } catch (error) {
+      console.error('Error deleting order:', error)
+      Swal.fire({ icon: 'error', title: 'ลบคำสั่งซื้อไม่สำเร็จ', text: error instanceof Error ? error.message : 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ' })
     }
   }
   const updateOrderStatus = async (id: string, status: OrderStatus) => {
@@ -1428,24 +1443,41 @@ export default function AdminPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold text-lg">ผู้ใช้งาน</div>
-                    <div className="text-sm text-slate-500">ทั้งหมด {users.length} รายการ</div>
+                    <div className="text-sm text-slate-500">ทั้งหมด {users.length} รายการ (เรียงตามวันที่สมัครล่าสุด)</div>
                   </div>
+                  {/* Debug info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                      Debug: users.length = {users.length}, users = {JSON.stringify(users.slice(0, 2))}
+                    </div>
+                  )}
                   <div className="grid gap-2">
                     {users.map(u => (
-                      <div key={u.email || u._id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
+                      <div key={u.email || u._id || u.id} className="p-4 rounded-xl border bg-white flex items-center gap-3">
                         <div className="flex-1">
-                          <div className="font-semibold">{u.fullName || u.email}</div>
-                          <div className="text-xs text-slate-500">{u.email}</div>
+                          <div className="font-semibold text-base">{u.name || u.fullName || 'ไม่ระบุชื่อ'}</div>
+                          <div className="text-sm text-slate-600 mb-1">{u.email}</div>
+                          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                            {u.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3" />{u.phone}</div>}
+                            {u.address && <div className="flex items-center gap-1"><MapPin className="w-3 h-3" />{u.address.length > 30 ? u.address.substring(0, 30) + '...' : u.address}</div>}
+                            {u.createdAt && <div className="flex items-center gap-1"><Calendar className="w-3 h-3" />สมัคร: {new Date(u.createdAt).toLocaleDateString('th-TH', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</div>}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button className="px-3 py-1 rounded-full bg-yellow-500 text-white text-sm" onClick={async ()=>{
+                          <button className="px-3 py-1 rounded-full bg-yellow-500 text-white text-sm hover:bg-yellow-600 transition-colors" onClick={async ()=>{
                             const { value: newPass } = await Swal.fire({ title: 'ตั้งรหัสผ่านใหม่', input: 'password', inputLabel: `ตั้งรหัสผ่านใหม่ให้ ${u.email}`, showCancelButton: true })
                             if (!newPass) return
                             const res = await fetch('/api/admin-users', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ email: u.email, password: newPass }) })
                             if (!res.ok) return Swal.fire({ icon: 'error', title: 'ไม่สามารถเปลี่ยนรหัสผ่านได้' })
                             Swal.fire({ icon: 'success', title: 'เปลี่ยนรหัสผ่านสำเร็จ', timer: 1200, showConfirmButton: false })
                           }}>เปลี่ยนรหัสผ่าน</button>
-                          <button className="px-3 py-1 rounded-full bg-red-600 text-white text-sm" onClick={async ()=>{
+                          <button className="px-3 py-1 rounded-full bg-red-600 text-white text-sm hover:bg-red-700 transition-colors" onClick={async ()=>{
                             const ok = await Swal.fire({ title: `ลบผู้ใช้ ${u.email}?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ' })
                             if (!ok.isConfirmed) return
                             await fetch(`/api/admin-users?email=${encodeURIComponent(u.email)}`, { method: 'DELETE' })

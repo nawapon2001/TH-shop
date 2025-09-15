@@ -1,117 +1,194 @@
-import { MongoClient, ObjectId } from 'mongodb'
 import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
 
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
-const client = new MongoClient(uri)
+export const dynamic = 'force-dynamic'
 
-export async function GET() {
+// GET /api/announcements[?id=...]
+export async function GET(req: NextRequest) {
   try {
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
+    const id = req.nextUrl.searchParams.get('id')
     
-    // Get all active announcements, sorted by creation date (newest first)
-    const announcements = await collection
-      .find({ isActive: true })
-      .sort({ createdAt: -1 })
-      .toArray()
-    
-    return NextResponse.json(announcements)
+    if (id) {
+      const announcementId = parseInt(id)
+      if (isNaN(announcementId)) {
+        return NextResponse.json({ message: 'ID ไม่ถูกต้อง' }, { status: 400 })
+      }
+      
+      const announcement = await prisma.announcement.findUnique({
+        where: { id: announcementId }
+      })
+      
+      if (!announcement) {
+        return NextResponse.json({ message: 'ไม่พบประกาศ' }, { status: 404 })
+      }
+      
+      return NextResponse.json({
+        _id: announcement.id.toString(),
+        ...announcement
+      }, { headers: { 'Cache-Control': 'no-store' } })
+    }
+
+    const announcements = await prisma.announcement.findMany({
+      orderBy: { createdAt: 'desc' }
+    })
+
+    // Transform for frontend compatibility
+    const transformedAnnouncements = announcements.map(announcement => ({
+      _id: announcement.id.toString(),
+      ...announcement
+    }))
+
+    return NextResponse.json(transformedAnnouncements, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('Error fetching announcements:', error)
-    return NextResponse.json({ error: 'Failed to fetch announcements' }, { status: 500 })
-  } finally {
-    await client.close()
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลประกาศ',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }
 
-export async function POST(request: NextRequest) {
+// POST /api/announcements
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json()
-    const { title, content, type = 'info', startDate, endDate, image } = body
-    
-    if (!title || !content) {
-      return NextResponse.json({ error: 'Title and content are required' }, { status: 400 })
+    const data = await req.json()
+
+    if (!data.title?.trim()) {
+      return NextResponse.json({ message: 'กรุณาระบุหัวข้อประกาศ' }, { status: 400 })
     }
-    
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
-    
-    const announcement = {
-      title,
-      content,
-      type,
-      isActive: true,
-      image: image || null,
-      startDate: startDate || null,
-      endDate: endDate || null,
-      createdAt: new Date().toISOString(),
+
+    if (!data.content?.trim()) {
+      return NextResponse.json({ message: 'กรุณาระบุเนื้อหาประกาศ' }, { status: 400 })
     }
-    
-    const result = await collection.insertOne(announcement)
-    
-    return NextResponse.json({ success: true, id: result.insertedId })
+
+    const announcement = await prisma.announcement.create({
+      data: {
+        title: data.title.trim(),
+        content: data.content.trim(),
+        type: data.type || 'info',
+        isActive: data.isActive !== false, // Default to true
+        startDate: data.startDate ? new Date(data.startDate) : null,
+        endDate: data.endDate ? new Date(data.endDate) : null,
+        image: data.image || null
+      }
+    })
+
+    return NextResponse.json({
+      message: 'สร้างประกาศสำเร็จ',
+      announcement: {
+        _id: announcement.id.toString(),
+        ...announcement
+      }
+    })
   } catch (error) {
     console.error('Error creating announcement:', error)
-    return NextResponse.json({ error: 'Failed to create announcement' }, { status: 500 })
-  } finally {
-    await client.close()
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการสร้างประกาศ',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }
 
-export async function PATCH(request: NextRequest) {
+// PUT /api/announcements
+export async function PUT(req: NextRequest) {
   try {
-    const body = await request.json()
-    const { id, isActive } = body
-    
+    const data = await req.json()
+    const id = req.nextUrl.searchParams.get('id')
+
     if (!id) {
-      return NextResponse.json({ error: 'Announcement ID is required' }, { status: 400 })
+      return NextResponse.json({ message: 'กรุณาระบุ ID ประกาศ' }, { status: 400 })
     }
+
+    const announcementId = parseInt(id)
+    if (isNaN(announcementId)) {
+      return NextResponse.json({ message: 'ID ไม่ถูกต้อง' }, { status: 400 })
+    }
+
+    const existingAnnouncement = await prisma.announcement.findUnique({
+      where: { id: announcementId }
+    })
+
+    if (!existingAnnouncement) {
+      return NextResponse.json({ message: 'ไม่พบประกาศ' }, { status: 404 })
+    }
+
+    const updateData: any = {}
     
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
-    
-    await collection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { isActive: isActive !== undefined ? isActive : false } }
-    )
-    
-    return NextResponse.json({ success: true })
+    if (data.title !== undefined) {
+      if (!data.title?.trim()) {
+        return NextResponse.json({ message: 'กรุณาระบุหัวข้อประกาศ' }, { status: 400 })
+      }
+      updateData.title = data.title.trim()
+    }
+
+    if (data.content !== undefined) {
+      if (!data.content?.trim()) {
+        return NextResponse.json({ message: 'กรุณาระบุเนื้อหาประกาศ' }, { status: 400 })
+      }
+      updateData.content = data.content.trim()
+    }
+
+    if (data.type !== undefined) updateData.type = data.type
+    if (data.isActive !== undefined) updateData.isActive = data.isActive
+    if (data.startDate !== undefined) updateData.startDate = data.startDate ? new Date(data.startDate) : null
+    if (data.endDate !== undefined) updateData.endDate = data.endDate ? new Date(data.endDate) : null
+    if (data.image !== undefined) updateData.image = data.image
+
+    const announcement = await prisma.announcement.update({
+      where: { id: announcementId },
+      data: updateData
+    })
+
+    return NextResponse.json({
+      message: 'อัปเดตประกาศสำเร็จ',
+      announcement: {
+        _id: announcement.id.toString(),
+        ...announcement
+      }
+    })
   } catch (error) {
     console.error('Error updating announcement:', error)
-    return NextResponse.json({ error: 'Failed to update announcement' }, { status: 500 })
-  } finally {
-    await client.close()
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการอัปเดตประกาศ',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }
 
-// DELETE - Delete announcement
-export async function DELETE(request: Request) {
+// DELETE /api/announcements
+export async function DELETE(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
+    const id = req.nextUrl.searchParams.get('id')
+
     if (!id) {
-      return NextResponse.json({ error: 'Announcement ID is required' }, { status: 400 })
+      return NextResponse.json({ message: 'กรุณาระบุ ID ประกาศ' }, { status: 400 })
     }
-    
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
-    
-    const result = await collection.deleteOne({ _id: new ObjectId(id) })
-    
-    if (result.deletedCount === 0) {
-      return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
+
+    const announcementId = parseInt(id)
+    if (isNaN(announcementId)) {
+      return NextResponse.json({ message: 'ID ไม่ถูกต้อง' }, { status: 400 })
     }
-    
-    return NextResponse.json({ success: true, message: 'Announcement deleted successfully' })
+
+    const existingAnnouncement = await prisma.announcement.findUnique({
+      where: { id: announcementId }
+    })
+
+    if (!existingAnnouncement) {
+      return NextResponse.json({ message: 'ไม่พบประกาศ' }, { status: 404 })
+    }
+
+    await prisma.announcement.delete({
+      where: { id: announcementId }
+    })
+
+    return NextResponse.json({
+      message: 'ลบประกาศสำเร็จ'
+    })
   } catch (error) {
     console.error('Error deleting announcement:', error)
-    return NextResponse.json({ error: 'Failed to delete announcement' }, { status: 500 })
-  } finally {
-    await client.close()
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการลบประกาศ',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }

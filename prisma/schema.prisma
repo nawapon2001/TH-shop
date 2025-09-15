@@ -30,6 +30,10 @@ model Product {
   deliveryInfo    String?          @db.VarChar(255)
   promotions      Json?            // JSON array สำหรับ promotions
   stock           Int              @default(999)
+  // เพิ่มการเชื่อมโยงกับ seller
+  seller          Seller?          @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  sellerId        Int?
+  sellerUsername  String?          @db.VarChar(50) // เก็บ username ของ seller สำหรับ query ง่าย
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -64,6 +68,9 @@ model Category {
   id          Int      @id @default(autoincrement())
   name        String   @unique @db.VarChar(100)
   description String?  @db.Text
+  icon        String?  @db.VarChar(500)  // URL หรือ path ของไอคอน
+  iconType    String?  @db.VarChar(20)   // 'system' หรือ 'upload'
+  iconName    String?  @db.VarChar(100)  // ชื่อไอคอนระบบ
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -72,16 +79,25 @@ model Category {
 
 // Table สำหรับ Sellers (ถ้ามีระบบผู้ขาย)
 model Seller {
-  id       Int     @id @default(autoincrement())
-  username String  @unique @db.VarChar(50)
-  shopName String? @db.VarChar(100)
-  fullName String? @db.VarChar(100)
-  email    String? @unique @db.VarChar(100)
-  phone    String? @db.VarChar(20)
-  image    String? @db.VarChar(500)
-  address  String? @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                Int       @id @default(autoincrement())
+  username          String    @unique @db.VarChar(50)
+  password          String?   @db.VarChar(255) // สำหรับ authentication
+  shopName          String?   @db.VarChar(100)
+  fullName          String?   @db.VarChar(100)
+  email             String?   @unique @db.VarChar(100)
+  phone             String?   @db.VarChar(20)
+  image             String?   @db.VarChar(500)
+  address           String?   @db.Text
+  birthDate         String?   @db.VarChar(20) // หรือ DateTime ตามต้องการ
+  province          String?   @db.VarChar(100)
+  description       String?   @db.Text
+  shopImage         String?   @db.VarChar(500)
+  bankAccount       String?   @db.VarChar(50)
+  bankName          String?   @db.VarChar(100)
+  accountHolderName String?   @db.VarChar(100)
+  products          Product[] // ความสัมพันธ์กับสินค้า
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@map("sellers")
 }
@@ -98,5 +114,92 @@ model Order {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  messages OrderMessage[] // ความสัมพันธ์กับ messages
+
   @@map("orders")
+}
+
+// Table สำหรับ Wishlist
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  user      String   @db.VarChar(100) // user identifier
+  items     Json     // JSON array ของสินค้าที่อยู่ใน wishlist
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([user])
+  @@map("wishlists")
+}
+
+// Table สำหรับ Users (ลูกค้าทั่วไป)
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(191) // Optimized for MySQL utf8mb4 indexing
+  password  String   @db.VarChar(255) // Adequate for bcrypt hashes
+  name      String?  @db.VarChar(100)
+  phone     String?  @db.VarChar(20)
+  address   String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamp(0)
+  updatedAt DateTime @updatedAt @db.Timestamp(0)
+
+  @@map("users")
+  @@index([email]) // Explicit index for faster lookups
+}
+
+// Table สำหรับ Banners
+model Banner {
+  id          Int      @id @default(autoincrement())
+  filename    String   @unique @db.VarChar(255)
+  url         String   @db.VarChar(500)
+  image       Bytes? // สำหรับ binary data
+  contentType String?  @db.VarChar(100)
+  isSmall     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("banners")
+}
+
+// Table สำหรับ Announcements
+model Announcement {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(255)
+  content   String   @db.Text
+  type      String   @default("info") @db.VarChar(50)
+  isActive  Boolean  @default(true)
+  image     String?  @db.VarChar(500)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("announcements")
+}
+
+// Table สำหรับ Admin Users
+model AdminUser {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique @db.VarChar(50)
+  email     String   @unique @db.VarChar(100)
+  password  String   @db.VarChar(255)
+  role      String   @default("admin") @db.VarChar(50)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_users")
+}
+
+// Table สำหรับ Order Messages
+model OrderMessage {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  sender    String   @db.VarChar(50) // 'customer' or 'seller' or 'admin'
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_messages")
 }

@@ -1,24 +1,23 @@
 import { NextResponse } from 'next/server'
-import { connectToDatabase } from '@/lib/mongodb'
-import clientPromise from '@/lib/mongodb'
-import Product from '@/models/Product'
+import prisma from '@/lib/prisma'
 
-type ProductOptionValue = { 
-  value: string; 
-  price?: number; // ราคาเพิ่มเติม หรือ ราคาเฉพาะของตัวเลือกนี้
-  priceType?: 'add' | 'replace'; // 'add' = เพิ่มจากราคาหลัก, 'replace' = แทนที่ราคาหลัก
+type ProductOptionValue = {
+  value: string
+  price?: number
+  priceType?: 'add' | 'replace'
+  stock?: number
+  sku?: string
 }
 
-type ProductOption = { 
-  name: string; 
-  values: ProductOptionValue[] 
+type ProductOption = {
+  name: string
+  values: ProductOptionValue[]
 }
 
 const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
 
 function sanitizeOptions(raw: any): ProductOption[] {
   try {
-    // Handle both string and already parsed arrays
     let parsed: any
     if (typeof raw === 'string') {
       parsed = JSON.parse(raw || '[]')
@@ -40,17 +39,16 @@ function sanitizeOptions(raw: any): ProductOption[] {
         
         const valuesRaw = Array.isArray(o?.values) ? o.values : []
         
-        // แปลง values ให้เป็น ProductOptionValue[]
         const values: ProductOptionValue[] = valuesRaw
           .map((v: any) => {
             if (!v) return null
             
-            // รองรับทั้งแบบ string เดิม และแบบ object ใหม่
             if (typeof v === 'string') {
               return { 
                 value: ensureString(v), 
                 price: 0, 
-                priceType: 'add' as const 
+                priceType: 'add' as const,
+                stock: 0
               }
             } else if (typeof v === 'object' && v !== null) {
               const value = ensureString(v.value)
@@ -58,11 +56,15 @@ function sanitizeOptions(raw: any): ProductOption[] {
               
               const price = Number(v.price) || 0
               const priceType = (v.priceType === 'replace' ? 'replace' : 'add') as 'add' | 'replace'
+              const stock = Number(v.stock) || 0
+              const sku = ensureString(v.sku)
               
               return {
                 value,
-                price: Math.max(0, price), // ป้องกันราคาติดลบ
-                priceType
+                price: Math.max(0, price),
+                priceType,
+                stock: Math.max(0, stock),
+                sku
               }
             }
             return null
@@ -75,7 +77,6 @@ function sanitizeOptions(raw: any): ProductOption[] {
       })
       .filter((o: any) => o !== null)
       .map((o: any) => {
-        // ป้องกันชื่อตัวเลือกซ้ำ
         let name = o.name as string
         let n = 2
         while (seen.has(name)) {
@@ -97,16 +98,6 @@ export async function POST(req: Request) {
     const contentType = req.headers.get('content-type') || ''
     console.log('Content-Type:', contentType)
 
-    // Try connecting to database
-    let useMongoose = true
-    try {
-      await connectToDatabase()
-    } catch (mongooseError) {
-      console.warn('Mongoose connection failed, trying raw MongoDB client:', mongooseError)
-      useMongoose = false
-    }
-
-    // Parse request data
     let name: string, price: number, category: string, description: string, images: string[] = [], optionsRaw: any
 
     if (contentType.includes('multipart/form-data')) {
@@ -162,165 +153,169 @@ export async function POST(req: Request) {
         if (!value.value || !value.value.trim()) {
           return NextResponse.json({ message: `กรุณาระบุค่าของตัวเลือก "${option.name}" ให้ถูกต้อง` }, { status: 400 })
         }
-        if (value.price < 0) {
+        
+        const price = value.price ?? 0
+        if (price < 0) {
           return NextResponse.json({ message: `ราคาของตัวเลือก "${option.name}: ${value.value}" ไม่สามารถน้อยกว่า 0 ได้` }, { status: 400 })
         }
-        if (!['add', 'replace'].includes(value.priceType)) {
+
+        const priceType = value.priceType || 'add'
+        if (!['add', 'replace'].includes(priceType)) {
           return NextResponse.json({ message: `ประเภทราคาของตัวเลือก "${option.name}: ${value.value}" ไม่ถูกต้อง` }, { status: 400 })
         }
-      }
-    }
 
-    const productData = {
-      name: name.trim(),
-      price,
-      category: category.trim(),
-      description: description.trim(),
-      image: images[0] || '',
-      images,
-      options,
-      rating: 0,
-      reviews: 0,
-      sold: 0,
-      discountPercent: 0,
-      deliveryInfo: '',
-      promotions: [],
-      stock: 999,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-
-    if (useMongoose) {
-      // Use Mongoose
-      try {
-        const doc = new Product(productData)
-        console.log('Creating product with Mongoose:', { name, price, category, description, optionsCount: options.length })
-        await doc.save()
-        console.log('Product saved successfully with ID:', doc._id?.toString())
-        return NextResponse.json({ message: 'เพิ่มสินค้าแล้ว', id: doc._id?.toString() })
-      } catch (mongooseError) {
-        console.error('Mongoose save failed:', mongooseError)
-        useMongoose = false
-      }
-    }
-
-    if (!useMongoose) {
-      // Fallback to raw MongoDB client
-      try {
-        const client = await clientPromise
-        if (!client) {
-          return NextResponse.json({ message: 'ไม่สามารถเชื่อมต่อฐานข้อมูล' }, { status: 500 })
+        const stock = value.stock ?? 0
+        if (stock < 0) {
+          return NextResponse.json({ message: `สต็อกของตัวเลือก "${option.name}: ${value.value}" ไม่สามารถน้อยกว่า 0 ได้` }, { status: 400 })
         }
-        
-        const db = client.db('signshop')
-        const result = await db.collection('products').insertOne(productData)
-        console.log('Product saved with raw MongoDB client:', result.insertedId)
-        return NextResponse.json({ message: 'เพิ่มสินค้าแล้ว', id: result.insertedId.toString() })
-      } catch (clientError) {
-        console.error('Raw MongoDB client failed:', clientError)
-        throw clientError
       }
     }
-    
-    return NextResponse.json({ message: 'เพิ่มสินค้าแล้ว' })
-  } catch (err) {
-    console.error('Error adding product:', err)
-    
-    // Handle specific errors
-    if (err instanceof Error) {
-      if (err.name === 'ValidationError') {
-        return NextResponse.json({ message: `ข้อมูลไม่ถูกต้อง: ${err.message}` }, { status: 400 })
-      }
-      if (err.message.includes('duplicate key')) {
-        return NextResponse.json({ message: 'สินค้านี้มีอยู่ในระบบแล้ว' }, { status: 400 })
-      }
-      if (err.message.includes('ECONNREFUSED') || err.message.includes('MongoNetworkError')) {
-        return NextResponse.json({ message: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' }, { status: 500 })
-      }
-    }
-    
-    return NextResponse.json({ message: 'เพิ่มสินค้าไม่สำเร็จ' }, { status: 500 })
-  }
-}
 
-// เพิ่มฟังก์ชัน normalize สำหรับ GET
-function normalizeOptionsForOutput(raw: any): any[] {
-  if (!raw || !Array.isArray(raw)) return []
-  
-  return raw.map((option: any) => {
-    if (!option || typeof option !== 'object') return option
-    
-    return {
-      name: option.name || '',
-      values: Array.isArray(option.values) ? option.values.map((v: any) => {
-        // ถ้าเป็น object ให้ส่งข้อมูลราคาด้วย
-        if (typeof v === 'object' && v !== null && v.value) {
-          return {
-            value: v.value,
-            price: v.price || 0,
-            priceType: v.priceType || 'add'
+    // Create product with Prisma
+    try {
+      const product = await prisma.product.create({
+        data: {
+          name: name.trim(),
+          price,
+          category: category.trim() || null,
+          description: description.trim() || null,
+          image: images[0] || null,
+          images: images.length > 0 ? images : undefined,
+          rating: 0,
+          reviews: 0,
+          sold: 0,
+          discountPercent: 0,
+          deliveryInfo: null,
+          promotions: undefined,
+          stock: 999,
+          options: {
+            create: options.map(option => ({
+              name: option.name,
+              values: {
+                create: option.values.map(value => ({
+                  value: value.value,
+                  price: value.price || 0,
+                  priceType: value.priceType || 'add',
+                  stock: value.stock || 0,
+                  sku: value.sku || null
+                }))
+              }
+            }))
+          }
+        },
+        include: {
+          options: {
+            include: {
+              values: true
+            }
           }
         }
-        // ถ้าเป็น string ให้แปลงเป็น object
-        return {
-          value: v,
-          price: 0,
-          priceType: 'add'
-        }
-      }) : []
+      })
+
+      console.log('Product created successfully with ID:', product.id)
+      return NextResponse.json({ 
+        message: 'เพิ่มสินค้าแล้ว', 
+        id: product.id.toString(),
+        product 
+      })
+    } catch (prismaError) {
+      console.error('Prisma error:', prismaError)
+      return NextResponse.json({ 
+        message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล',
+        error: process.env.NODE_ENV === 'development' ? String(prismaError) : undefined
+      }, { status: 500 })
     }
-  })
+
+  } catch (error) {
+    console.error('API error:', error)
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการประมวลผล',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
+  }
 }
 
 export async function GET() {
   try {
-    // Try Mongoose first
-    try {
-      await connectToDatabase()
-      const products = await Product.find().lean()
-      // Normalize options ก่อนส่งกลับ
-      const normalizedProducts = products.map((product: any) => ({
-        ...product,
-        options: normalizeOptionsForOutput(product.options)
-      }))
-      return NextResponse.json(normalizedProducts)
-    } catch (mongooseError) {
-      console.warn('Mongoose failed, trying raw MongoDB client:', mongooseError)
-    }
+    const products = await prisma.product.findMany({
+      include: {
+        options: {
+          include: {
+            values: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
 
-    // Fallback to raw MongoDB client
-    const client = await clientPromise
-    if (!client) {
-      return NextResponse.json({ message: 'ไม่สามารถเชื่อมต่อฐานข้อมูล' }, { status: 500 })
-    }
-    
-    const db = client.db('signshop')
-    const products = await db.collection('products').find({}).toArray()
-    // Normalize options ก่อนส่งกลับ
-    const normalizedProducts = products.map((product: any) => ({
+    // Transform data to include _id for frontend compatibility
+    const transformedProducts = products.map(product => ({
       ...product,
-      options: normalizeOptionsForOutput(product.options)
+      _id: product.id.toString()
     }))
-    return NextResponse.json(normalizedProducts)
-  } catch (err) {
-    console.error('Error fetching products:', err)
-    return NextResponse.json({ message: 'ดึงสินค้าไม่สำเร็จ' }, { status: 500 })
+
+    return NextResponse.json(transformedProducts)
+  } catch (error) {
+    console.error('Error fetching products:', error)
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูล',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    await connectToDatabase()
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ message: 'กรุณาระบุ id สินค้า' }, { status: 400 })
-    const result = await Product.deleteOne({ _id: id })
-    if (result.deletedCount === 0) {
-      return NextResponse.json({ message: 'ไม่พบสินค้าที่ต้องการลบ' }, { status: 404 })
+    
+    if (!id) {
+      return NextResponse.json({ message: 'กรุณาระบุ ID สินค้า' }, { status: 400 })
     }
-    return NextResponse.json({ message: 'ลบสินค้าแล้ว' })
-  } catch (err) {
-    console.error('Error deleting product:', err)
-    return NextResponse.json({ message: 'ลบสินค้าไม่สำเร็จ' }, { status: 500 })
+
+    const productId = parseInt(id)
+    if (isNaN(productId)) {
+      return NextResponse.json({ message: 'ID ไม่ถูกต้อง' }, { status: 400 })
+    }
+
+    // Check if product exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { id: productId }
+    })
+
+    if (!existingProduct) {
+      return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
+    }
+
+    // Delete product options and values first (cascade should handle this, but explicit is better)
+    await prisma.productOptionValue.deleteMany({
+      where: {
+        option: {
+          productId: productId
+        }
+      }
+    })
+
+    await prisma.productOption.deleteMany({
+      where: { productId: productId }
+    })
+
+    // Delete the product
+    await prisma.product.delete({
+      where: { id: productId }
+    })
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'ลบสินค้าสำเร็จ' 
+    })
+  } catch (error) {
+    console.error('Error deleting product:', error)
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการลบสินค้า',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
   }
 }

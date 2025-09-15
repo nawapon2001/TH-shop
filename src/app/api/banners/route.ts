@@ -2,8 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs/promises'
-import { connectToDatabase } from '@/lib/mongodb'
-import Banner from '@/models/Banner'
+import prisma from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,64 +20,78 @@ function parseBool(v: unknown): boolean {
 
 // POST /api/banners  (รับได้ทั้ง 'banner' และ 'file')
 export async function POST(req: NextRequest) {
-  await fs.mkdir(uploadDir, { recursive: true })
-
-  const formData = await req.formData()
-  const file = (formData.get('banner') || formData.get('file')) as File | null
-  if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
-
-  const isSmall = parseBool(formData.get('isSmall'))
-
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
-
-  const safeName = file.name.replace(/\s+/g, '-')
-  const filename = `${Date.now()}-${safeName}`
-  const filePath = path.join(uploadDir, filename)
-  await fs.writeFile(filePath, buffer)
-
-  const record = {
-    _id: filename,
-    url: `/banners/${filename}`,
-    image: `/banners/${filename}`,
-    isSmall,
-  }
-
-  // เก็บ DB (best-effort)
   try {
-    await connectToDatabase()
-    await Banner.create({
-      filename,
-      image: buffer,            // ถ้าสคีมามี Buffer ก็เก็บได้
-      contentType: file.type,
-      url: record.url,
-      isSmall,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-  } catch (err) {
-    console.error('MongoDB banner insert error:', err)
-  }
+    await fs.mkdir(uploadDir, { recursive: true })
 
-  return NextResponse.json(record)
+    const formData = await req.formData()
+    const file = (formData.get('banner') || formData.get('file')) as File | null
+    if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
+
+    const isSmall = parseBool(formData.get('isSmall'))
+
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    const safeName = file.name.replace(/\\s+/g, '-')
+    const filename = `${Date.now()}-${safeName}`
+    const filePath = path.join(uploadDir, filename)
+    await fs.writeFile(filePath, buffer)
+
+    const record = {
+      _id: filename,
+      url: `/banners/${filename}`,
+      image: `/banners/${filename}`,
+      isSmall,
+    }
+
+    // เก็บข้อมูลใน database ด้วย Prisma
+    try {
+      await prisma.banner.create({
+        data: {
+          filename,
+          url: record.url,
+          image: buffer,
+          contentType: file.type,
+          isSmall,
+        }
+      })
+    } catch (err) {
+      console.error('Prisma banner insert error:', err)
+    }
+
+    return NextResponse.json(record)
+  } catch (error) {
+    console.error('Banner upload error:', error)
+    return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
+  }
 }
 
 // GET /api/banners -> [{ _id, url, image, isSmall }]
 export async function GET() {
   try {
-    await connectToDatabase()
-    const docs = await Banner.find({}, { filename: 1, url: 1, isSmall: 1 }).sort({ createdAt: 1 }).lean()
-    if (docs?.length) {
+    // ลองดึงข้อมูลจาก database ก่อน
+    const banners = await prisma.banner.findMany({
+      select: {
+        filename: true,
+        url: true,
+        isSmall: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    if (banners && banners.length > 0) {
       return NextResponse.json(
-        docs.map((d: any) => ({
-          _id: d.filename || String(d._id),
-          url: d.url || (d.filename ? `/banners/${d.filename}` : ''),
-          image: d.url || (d.filename ? `/banners/${d.filename}` : ''),
-          isSmall: !!d.isSmall,
+        banners.map((banner) => ({
+          _id: banner.filename,
+          url: banner.url,
+          image: banner.url,
+          isSmall: banner.isSmall,
         }))
       )
     }
-  } catch {
+  } catch (error) {
+    console.error('Database banner fetch error:', error)
     // fallback ลงที่ไฟล์ใน public/banners
   }
 
@@ -95,21 +108,33 @@ export async function GET() {
 
 // DELETE /api/banners?id=<filename or id>
 export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
-  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-
-  const filename = path.basename(id)
-  const filePath = path.join(uploadDir, filename)
-
-  try { await fs.unlink(filePath) } catch {}
-
   try {
-    await connectToDatabase()
-    await Banner.deleteOne({ $or: [{ filename }, { _id: filename }] })
-  } catch (err) {
-    console.error('MongoDB banner delete error:', err)
-  }
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  return NextResponse.json({ ok: true })
+    const filename = path.basename(id)
+    const filePath = path.join(uploadDir, filename)
+
+    // ลบไฟล์
+    try { 
+      await fs.unlink(filePath) 
+    } catch (error) {
+      console.error('File deletion error:', error)
+    }
+
+    // ลบจาก database
+    try {
+      await prisma.banner.deleteMany({
+        where: { filename }
+      })
+    } catch (err) {
+      console.error('Prisma banner delete error:', err)
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Banner deletion error:', error)
+    return NextResponse.json({ error: 'Deletion failed' }, { status: 500 })
+  }
 }

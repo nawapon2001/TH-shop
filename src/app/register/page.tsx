@@ -37,6 +37,11 @@ export default function RegisterPage() {
     return score // 0-4
   }, [password])
 
+  const emailValid = useMemo(() => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }, [email])
+
   const canSubmit =
     fullName.trim().length > 0 &&
     emailValid &&

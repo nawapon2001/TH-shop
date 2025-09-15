@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test - Orders</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+        textarea { width: 100%; height: 120px; font-family: monospace; }
+        input { padding: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🛒 API Test - Orders</h1>
+    
+    <div class="test-section">
+        <h3>1. Test GET Orders</h3>
+        <button onclick="testGetOrders()">GET /api/orders</button>
+        <div id="getOrdersResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Test POST Order (Auto-generated Order Number)</h3>
+        <p>สร้างคำสั่งซื้อใหม่โดยไม่ต้องระบุ orderNumber (ระบบจะสร้างให้อัตโนมัติ)</p>
+        <textarea id="orderData" placeholder="Order JSON">
+{
+  "totalAmount": 1500,
+  "customerInfo": {
+    "name": "ทดสอบ ลูกค้า",
+    "phone": "0812345678",
+    "email": "test@example.com",
+    "address": "123 ถนนทดสอบ"
+  },
+  "shippingInfo": {
+    "method": "standard",
+    "fee": 50
+  },
+  "items": [
+    {
+      "productId": 1,
+      "name": "เสื้อยืดคอกลม",
+      "price": 299,
+      "quantity": 2,
+      "seller": "testshop"
+    },
+    {
+      "productId": 2,
+      "name": "หูฟังบลูทูธ",
+      "price": 1590,
+      "quantity": 1,
+      "seller": "electronicshop"
+    }
+  ]
+}
+        </textarea>
+        <br>
+        <button onclick="testCreateOrder()">POST /api/orders</button>
+        <div id="createOrderResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Test POST Order (Custom Order Number)</h3>
+        <p>สร้างคำสั่งซื้อด้วย orderNumber ที่กำหนดเอง</p>
+        <input type="text" id="customOrderNumber" placeholder="Custom Order Number" value="CUSTOM-001">
+        <button onclick="testCreateOrderCustom()">POST /api/orders (Custom Number)</button>
+        <div id="createOrderCustomResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Test POST Order (Invalid Data)</h3>
+        <button onclick="testCreateOrderInvalid()">POST /api/orders (No Items)</button>
+        <button onclick="testCreateOrderInvalidAmount()">POST /api/orders (Invalid Amount)</button>
+        <div id="createOrderInvalidResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>5. Test GET Specific Order</h3>
+        <input type="number" id="orderIdInput" placeholder="Order ID" value="1">
+        <button onclick="testGetSpecificOrder()">GET /api/orders?id={id}</button>
+        <div id="getSpecificOrderResult" class="result"></div>
+    </div>
+
+    <script>
+        const baseUrl = window.location.origin;
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                return {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data
+                };
+            } catch (error) {
+                return {
+                    status: 'ERROR',
+                    statusText: error.message,
+                    data: null
+                };
+            }
+        }
+
+        async function testGetOrders() {
+            const result = await makeRequest(`${baseUrl}/api/orders`);
+            const element = document.getElementById('getOrdersResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Orders found: ${Array.isArray(result.data) ? result.data.length : 0}<br>
+                    <details>
+                        <summary>View Response</summary>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </details>
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testCreateOrder() {
+            const orderDataText = document.getElementById('orderData').value;
+            let orderData;
+            
+            try {
+                orderData = JSON.parse(orderDataText);
+            } catch (e) {
+                document.getElementById('createOrderResult').innerHTML = `<strong>❌ Invalid JSON</strong><br>${e.message}`;
+                return;
+            }
+
+            const result = await makeRequest(`${baseUrl}/api/orders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(orderData)
+            });
+            
+            const element = document.getElementById('createOrderResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Order Number: <strong>${result.data.orderNumber}</strong><br>
+                    Message: ${result.data.message}<br>
+                    <details>
+                        <summary>View Response</summary>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </details>
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testCreateOrderCustom() {
+            const customNumber = document.getElementById('customOrderNumber').value;
+            const orderData = {
+                orderNumber: customNumber,
+                totalAmount: 500,
+                customerInfo: {
+                    name: "ลูกค้าทดสอบ",
+                    phone: "0876543210",
+                    email: "custom@test.com"
+                },
+                items: [
+                    {
+                        productId: 1,
+                        name: "สินค้าทดสอบ",
+                        price: 500,
+                        quantity: 1
+                    }
+                ]
+            };
+
+            const result = await makeRequest(`${baseUrl}/api/orders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(orderData)
+            });
+            
+            const element = document.getElementById('createOrderCustomResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Order Number: <strong>${result.data.orderNumber}</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testCreateOrderInvalid() {
+            const invalidData = {
+                totalAmount: 100,
+                customerInfo: {
+                    name: "Test"
+                },
+                items: [] // Empty items array
+            };
+
+            const result = await makeRequest(`${baseUrl}/api/orders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(invalidData)
+            });
+            
+            const element = document.getElementById('createOrderInvalidResult');
+            
+            if (result.status === 400) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Expected 400 (${result.status})</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Unexpected response (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testCreateOrderInvalidAmount() {
+            const invalidData = {
+                totalAmount: -100, // Invalid amount
+                customerInfo: {
+                    name: "Test"
+                },
+                items: [
+                    {
+                        productId: 1,
+                        name: "Test",
+                        price: 100,
+                        quantity: 1
+                    }
+                ]
+            };
+
+            const result = await makeRequest(`${baseUrl}/api/orders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(invalidData)
+            });
+            
+            const element = document.getElementById('createOrderInvalidResult');
+            
+            if (result.status === 400) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Expected 400 (${result.status})</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Unexpected response (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testGetSpecificOrder() {
+            const orderId = document.getElementById('orderIdInput').value;
+            const result = await makeRequest(`${baseUrl}/api/orders?id=${orderId}`);
+            const element = document.getElementById('getSpecificOrderResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Order Number: ${result.data.orderNumber}<br>
+                    Status: ${result.data.status}<br>
+                    <details>
+                        <summary>View Response</summary>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </details>
+                `;
+            } else if (result.status === 404) {
+                element.className = 'result error';
+                element.innerHTML = `<strong>⚠️ Not Found (${result.status})</strong><br>${result.data.message}`;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        // Auto-run GET test on page load
+        window.onload = function() {
+            testGetOrders();
+        };
+    </script>
+</body>
+</html>

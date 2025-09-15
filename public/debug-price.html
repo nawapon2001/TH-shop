@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Price Calculation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .cart-item { padding: 10px; border: 1px solid #eee; margin: 5px 0; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 5px 0; font-family: monospace; }
+        .total { font-weight: bold; font-size: 18px; color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug ราคาสินค้า</h1>
+    
+    <div class="section">
+        <h3>1. Cart Data จาก LocalStorage</h3>
+        <button onclick="showCartData()">Show Cart Data</button>
+        <div id="cartData" class="debug"></div>
+    </div>
+
+    <div class="section">
+        <h3>2. Product Price Calculation</h3>
+        <p>ทดสอบการคำนวณราคาสินค้าตามตัวเลือก</p>
+        
+        <div>
+            <label>Base Price: </label>
+            <input type="number" id="basePrice" value="299" step="0.01">
+        </div>
+        
+        <div>
+            <label>Option Price: </label>
+            <input type="number" id="optionPrice" value="50" step="0.01">
+            <select id="priceType">
+                <option value="add">Add (+)</option>
+                <option value="replace">Replace</option>
+            </select>
+        </div>
+        
+        <div>
+            <label>Discount %: </label>
+            <input type="number" id="discountPercent" value="0" step="0.01">
+        </div>
+        
+        <button onclick="calculatePrice()">Calculate Price</button>
+        <div id="priceResult" class="debug"></div>
+    </div>
+
+    <div class="section">
+        <h3>3. Cart Totals Comparison</h3>
+        <button onclick="compareCartTotals()">Compare Cart Calculations</button>
+        <div id="cartComparison" class="debug"></div>
+    </div>
+
+    <div class="section">
+        <h3>4. Test Add Product to Cart</h3>
+        <div>
+            <label>Product ID: </label>
+            <input type="text" id="productId" value="test-product-1">
+        </div>
+        <div>
+            <label>Product Name: </label>
+            <input type="text" id="productName" value="เสื้อยืด">
+        </div>
+        <div>
+            <label>Base Price: </label>
+            <input type="number" id="testBasePrice" value="299" step="0.01">
+        </div>
+        <div>
+            <label>Calculated Price: </label>
+            <input type="number" id="testCalculatedPrice" value="349" step="0.01">
+        </div>
+        <div>
+            <label>Selected Options: </label>
+            <input type="text" id="selectedOptions" value='{"สี": "แดง", "ขนาด": "M"}' placeholder='JSON format'>
+        </div>
+        <div>
+            <label>Quantity: </label>
+            <input type="number" id="quantity" value="1" min="1">
+        </div>
+        
+        <button onclick="testAddToCart()">Add to Cart</button>
+        <button onclick="clearCart()">Clear Cart</button>
+        <div id="addResult" class="debug"></div>
+    </div>
+
+    <script>
+        // Simulate CartManager functionality
+        const CartManager = {
+            getCart() {
+                try {
+                    const raw = localStorage.getItem('cart_v2');
+                    return raw ? JSON.parse(raw) : [];
+                } catch { return []; }
+            },
+            
+            addProduct(product, quantity = 1) {
+                const items = this.getCart();
+                const selectedOptions = product.selectedOptions || {};
+                const keyStr = product._id + '::' + JSON.stringify(selectedOptions);
+                
+                const item = {
+                    _id: product._id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.image,
+                    quantity,
+                    seller: product.seller,
+                    selectedOptions: product.selectedOptions
+                };
+                
+                const idx = items.findIndex(it => {
+                    const itKeyStr = it._id + '::' + JSON.stringify(it.selectedOptions || {});
+                    return itKeyStr === keyStr;
+                });
+                
+                if (idx >= 0) {
+                    items[idx].quantity += quantity;
+                } else {
+                    items.push(item);
+                }
+                
+                localStorage.setItem('cart_v2', JSON.stringify(items));
+                return items;
+            },
+            
+            clear() {
+                localStorage.setItem('cart_v2', JSON.stringify([]));
+            }
+        };
+
+        function showCartData() {
+            const cart = CartManager.getCart();
+            const element = document.getElementById('cartData');
+            
+            if (cart.length === 0) {
+                element.innerHTML = 'Cart is empty';
+                return;
+            }
+            
+            let html = `<strong>Cart Items (${cart.length}):</strong><br>`;
+            let totalPrice = 0;
+            
+            cart.forEach((item, index) => {
+                const itemTotal = (item.price || 0) * (item.quantity || 1);
+                totalPrice += itemTotal;
+                
+                html += `
+                    <div class="cart-item">
+                        <strong>${index + 1}. ${item.name}</strong><br>
+                        ID: ${item._id}<br>
+                        Price: ฿${(item.price || 0).toLocaleString()}<br>
+                        Quantity: ${item.quantity}<br>
+                        Selected Options: ${JSON.stringify(item.selectedOptions || {})}<br>
+                        Seller: ${item.seller || 'N/A'}<br>
+                        <span class="total">Item Total: ฿${itemTotal.toLocaleString()}</span>
+                    </div>
+                `;
+            });
+            
+            html += `<div class="total">Cart Total: ฿${totalPrice.toLocaleString()}</div>`;
+            element.innerHTML = html;
+        }
+
+        function calculatePrice() {
+            const basePrice = parseFloat(document.getElementById('basePrice').value) || 0;
+            const optionPrice = parseFloat(document.getElementById('optionPrice').value) || 0;
+            const priceType = document.getElementById('priceType').value;
+            const discountPercent = parseFloat(document.getElementById('discountPercent').value) || 0;
+            
+            // Calculate price with options
+            let finalPrice = basePrice;
+            if (priceType === 'replace') {
+                finalPrice = optionPrice;
+            } else {
+                finalPrice += optionPrice;
+            }
+            
+            // Apply discount
+            const discountedPrice = discountPercent > 0 
+                ? Math.round(finalPrice * (1 - discountPercent / 100))
+                : finalPrice;
+            
+            const result = `
+                Base Price: ฿${basePrice.toLocaleString()}<br>
+                Option Price: ฿${optionPrice.toLocaleString()} (${priceType})<br>
+                Price with Options: ฿${finalPrice.toLocaleString()}<br>
+                Discount: ${discountPercent}%<br>
+                <strong>Final Price: ฿${discountedPrice.toLocaleString()}</strong>
+            `;
+            
+            document.getElementById('priceResult').innerHTML = result;
+        }
+
+        function compareCartTotals() {
+            const cart = CartManager.getCart();
+            
+            if (cart.length === 0) {
+                document.getElementById('cartComparison').innerHTML = 'Cart is empty';
+                return;
+            }
+            
+            // Method 1: Using item.price * quantity
+            const method1 = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+            
+            // Method 2: Sum each item separately
+            let method2 = 0;
+            cart.forEach(item => {
+                method2 += (item.price || 0) * (item.quantity || 1);
+            });
+            
+            const result = `
+                <strong>Cart Calculation Methods:</strong><br>
+                Method 1 (reduce): ฿${method1.toLocaleString()}<br>
+                Method 2 (forEach): ฿${method2.toLocaleString()}<br>
+                <strong>Match: ${method1 === method2 ? '✅ Yes' : '❌ No'}</strong><br><br>
+                
+                <strong>Item Breakdown:</strong><br>
+                ${cart.map((item, i) => {
+                    const itemTotal = (item.price || 0) * (item.quantity || 1);
+                    return `${i + 1}. ${item.name}: ฿${item.price} × ${item.quantity} = ฿${itemTotal.toLocaleString()}`;
+                }).join('<br>')}
+            `;
+            
+            document.getElementById('cartComparison').innerHTML = result;
+        }
+
+        function testAddToCart() {
+            try {
+                const productId = document.getElementById('productId').value;
+                const productName = document.getElementById('productName').value;
+                const calculatedPrice = parseFloat(document.getElementById('testCalculatedPrice').value);
+                const selectedOptionsStr = document.getElementById('selectedOptions').value;
+                const quantity = parseInt(document.getElementById('quantity').value) || 1;
+                
+                let selectedOptions = {};
+                if (selectedOptionsStr.trim()) {
+                    selectedOptions = JSON.parse(selectedOptionsStr);
+                }
+                
+                const product = {
+                    _id: productId,
+                    name: productName,
+                    price: calculatedPrice,
+                    selectedOptions: selectedOptions,
+                    seller: 'test-seller'
+                };
+                
+                const updatedCart = CartManager.addProduct(product, quantity);
+                
+                document.getElementById('addResult').innerHTML = `
+                    <strong>Added to cart successfully!</strong><br>
+                    Product: ${productName}<br>
+                    Price: ฿${calculatedPrice.toLocaleString()}<br>
+                    Options: ${JSON.stringify(selectedOptions)}<br>
+                    Quantity: ${quantity}<br>
+                    Cart size: ${updatedCart.length} items
+                `;
+                
+                // Auto-refresh cart data
+                showCartData();
+                
+            } catch (error) {
+                document.getElementById('addResult').innerHTML = `<strong>Error:</strong> ${error.message}`;
+            }
+        }
+
+        function clearCart() {
+            CartManager.clear();
+            document.getElementById('addResult').innerHTML = 'Cart cleared!';
+            showCartData();
+        }
+
+        // Auto-load cart data on page load
+        window.onload = function() {
+            showCartData();
+        };
+    </script>
+</body>
+</html>

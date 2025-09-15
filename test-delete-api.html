@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test - DELETE Product</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+    </style>
+</head>
+<body>
+    <h1>🧪 API Test - Products DELETE Method</h1>
+    
+    <div class="test-section">
+        <h3>1. Test GET Products (ดูสินค้าทั้งหมด)</h3>
+        <button onclick="testGetProducts()">GET /api/products</button>
+        <div id="getResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Test DELETE Non-existent Product</h3>
+        <button onclick="testDeleteNonExistent()">DELETE /api/products?id=999</button>
+        <div id="deleteNonExistentResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Test DELETE Existing Product</h3>
+        <input type="number" id="productIdInput" placeholder="Product ID" value="1">
+        <button onclick="testDeleteExisting()">DELETE Product</button>
+        <div id="deleteExistingResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Test DELETE Invalid ID</h3>
+        <button onclick="testDeleteInvalid()">DELETE /api/products?id=abc</button>
+        <div id="deleteInvalidResult" class="result"></div>
+    </div>
+
+    <script>
+        const baseUrl = window.location.origin;
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                return {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data
+                };
+            } catch (error) {
+                return {
+                    status: 'ERROR',
+                    statusText: error.message,
+                    data: null
+                };
+            }
+        }
+
+        async function testGetProducts() {
+            const result = await makeRequest(`${baseUrl}/api/products`);
+            const element = document.getElementById('getResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Products found: ${Array.isArray(result.data) ? result.data.length : 0}<br>
+                    <details>
+                        <summary>View Response</summary>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </details>
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${result.statusText}`;
+            }
+        }
+
+        async function testDeleteNonExistent() {
+            const result = await makeRequest(`${baseUrl}/api/products?id=999`, {
+                method: 'DELETE'
+            });
+            const element = document.getElementById('deleteNonExistentResult');
+            
+            if (result.status === 404) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Expected 404 (${result.status})</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Unexpected response (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testDeleteExisting() {
+            const productId = document.getElementById('productIdInput').value;
+            const result = await makeRequest(`${baseUrl}/api/products?id=${productId}`, {
+                method: 'DELETE'
+            });
+            const element = document.getElementById('deleteExistingResult');
+            
+            if (result.status === 200) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Success (${result.status})</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else if (result.status === 404) {
+                element.className = 'result error';
+                element.innerHTML = `<strong>⚠️ Product not found (${result.status})</strong><br>${result.data.message}`;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Error (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        async function testDeleteInvalid() {
+            const result = await makeRequest(`${baseUrl}/api/products?id=abc`, {
+                method: 'DELETE'
+            });
+            const element = document.getElementById('deleteInvalidResult');
+            
+            if (result.status === 400) {
+                element.className = 'result success';
+                element.innerHTML = `
+                    <strong>✅ Expected 400 (${result.status})</strong><br>
+                    Message: ${result.data.message}
+                `;
+            } else {
+                element.className = 'result error';
+                element.innerHTML = `<strong>❌ Unexpected response (${result.status})</strong><br>${JSON.stringify(result.data)}`;
+            }
+        }
+
+        // Auto-run GET test on page load
+        window.onload = function() {
+            testGetProducts();
+        };
+    </script>
+</body>
+</html>

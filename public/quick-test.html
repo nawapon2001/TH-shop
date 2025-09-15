@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quick Order Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+    </style>
+</head>
+<body>
+    <h1>🛒 Quick Order Test</h1>
+    
+    <button onclick="testCreateOrder()">Test Create Order (Auto orderNumber)</button>
+    <button onclick="testGetOrders()">Test Get Orders</button>
+    <button onclick="testAnnouncements()">Test Announcements POST</button>
+    
+    <div id="result" class="result">กดปุ่มเพื่อทดสอบ...</div>
+
+    <script>
+        async function testCreateOrder() {
+            const orderData = {
+                totalAmount: 1500,
+                customerInfo: {
+                    name: "ทดสอบ ลูกค้า",
+                    phone: "0812345678",
+                    email: "test@example.com",
+                    address: "123 ถนนทดสอบ"
+                },
+                items: [
+                    {
+                        productId: 1,
+                        name: "เสื้อยืดคอกลม",
+                        price: 299,
+                        quantity: 2,
+                        seller: "testshop"
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(orderData)
+                });
+                
+                const data = await response.json();
+                const element = document.getElementById('result');
+                
+                if (response.ok) {
+                    element.className = 'result success';
+                    element.innerHTML = `
+                        <strong>✅ สร้าง Order สำเร็จ!</strong><br>
+                        Status: ${response.status}<br>
+                        Order Number: <strong>${data.orderNumber}</strong><br>
+                        Message: ${data.message}<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    element.className = 'result error';
+                    element.innerHTML = `
+                        <strong>❌ Error ${response.status}</strong><br>
+                        ${data.message}<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<strong>❌ Network Error</strong><br>${error.message}`;
+            }
+        }
+
+        async function testGetOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                const data = await response.json();
+                const element = document.getElementById('result');
+                
+                if (response.ok) {
+                    element.className = 'result success';
+                    element.innerHTML = `
+                        <strong>✅ Get Orders สำเร็จ!</strong><br>
+                        Status: ${response.status}<br>
+                        Orders Count: ${Array.isArray(data) ? data.length : 0}<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    element.className = 'result error';
+                    element.innerHTML = `<strong>❌ Error ${response.status}</strong><br>${JSON.stringify(data)}`;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<strong>❌ Network Error</strong><br>${error.message}`;
+            }
+        }
+
+        async function testAnnouncements() {
+            const announcementData = {
+                title: "ประกาศทดสอบ",
+                content: "เนื้อหาประกาศทดสอบ",
+                type: "info"
+            };
+
+            try {
+                const response = await fetch('/api/announcements', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(announcementData)
+                });
+                
+                const data = await response.json();
+                const element = document.getElementById('result');
+                
+                if (response.ok) {
+                    element.className = 'result success';
+                    element.innerHTML = `
+                        <strong>✅ สร้าง Announcement สำเร็จ!</strong><br>
+                        Status: ${response.status}<br>
+                        Message: ${data.message}<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    element.className = 'result error';
+                    element.innerHTML = `
+                        <strong>❌ Error ${response.status}</strong><br>
+                        ${data.message}<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<strong>❌ Network Error</strong><br>${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

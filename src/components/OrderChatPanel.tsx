@@ -84,7 +84,7 @@ export default function OrderChatPanel({ orderId }: { orderId: string | null }) 
             {loading && <div className="text-xs text-slate-500">กำลังโหลด…</div>}
             {error && <div className="text-xs text-red-600">{error}</div>}
             {messages.map((m, i) => (
-              <div key={i} className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow ${m.role==='shop' ? 'ml-auto bg-orange-600 text-white' : 'bg-white border border-orange-200 text-slate-800'}`}>
+              <div key={`${m.id || m.createdAt}-${i}`} className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow ${m.role==='shop' ? 'ml-auto bg-orange-600 text-white' : 'bg-white border border-orange-200 text-slate-800'}`}>
                 <div>{m.text}</div>
                 <div className={`mt-1 text-[10px] ${m.role==='shop' ? 'text-white/80' : 'text-slate-500'}`}>
                   {new Date(m.createdAt).toLocaleString()}

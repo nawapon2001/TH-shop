@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Product to Checkout Flow</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+        .step { background: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; }
+        .product { background: #fff; border: 1px solid #eee; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .option-group { margin: 10px 0; }
+        .option-button { 
+            padding: 8px 16px; margin: 4px; border: 1px solid #ddd; background: white; 
+            cursor: pointer; border-radius: 6px; 
+        }
+        .option-button.selected { background: #007bff; color: white; border-color: #007bff; }
+        .price-display { font-size: 24px; font-weight: bold; color: #007bff; margin: 10px 0; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 5px 0; font-family: monospace; font-size: 12px; }
+        .cart-item { background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 6px; }
+        .total { font-size: 18px; font-weight: bold; color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>🛍️ Test Product to Checkout Flow</h1>
+    
+    <div class="section">
+        <h3>Step 1: Product Selection</h3>
+        <div class="product">
+            <h4>เสื้อยืดคอกลม</h4>
+            <p>Base Price: ฿299</p>
+            
+            <div class="option-group">
+                <label><strong>สี:</strong></label><br>
+                <button class="option-button" onclick="selectOption('สี', 'แดง', 0)">แดง</button>
+                <button class="option-button" onclick="selectOption('สี', 'น้ำเงิน', 0)">น้ำเงิน</button>
+                <button class="option-button" onclick="selectOption('สี', 'เขียว', 0)">เขียว</button>
+            </div>
+            
+            <div class="option-group">
+                <label><strong>ขนาด:</strong></label><br>
+                <button class="option-button" onclick="selectOption('ขนาด', 'S', 0)">S</button>
+                <button class="option-button" onclick="selectOption('ขนาด', 'M', 50)">M (+฿50)</button>
+                <button class="option-button" onclick="selectOption('ขนาด', 'L', 100)">L (+฿100)</button>
+                <button class="option-button" onclick="selectOption('ขนาด', 'XL', 150)">XL (+฿150)</button>
+            </div>
+            
+            <div class="option-group">
+                <label><strong>จำนวน:</strong></label><br>
+                <input type="number" id="quantity" value="1" min="1" max="10" onchange="updateCalculation()">
+            </div>
+            
+            <div class="price-display" id="calculatedPrice">฿299</div>
+            
+            <button onclick="addToCart()" style="background: #28a745; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer;">
+                เพิ่มลงตะกร้า
+            </button>
+            
+            <button onclick="buyNow()" style="background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px;">
+                ซื้อเลย
+            </button>
+        </div>
+        
+        <div class="debug" id="productDebug"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 2: Shopping Cart</h3>
+        <div id="cartItems"></div>
+        <div class="total" id="cartTotal">รวม: ฿0</div>
+        
+        <button onclick="clearCart()" style="background: #dc3545; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+            ล้างตะกร้า
+        </button>
+        
+        <button onclick="goToCheckout()" style="background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px;">
+            ไปหน้าสั่งซื้อ
+        </button>
+        
+        <div class="debug" id="cartDebug"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 3: Checkout Summary</h3>
+        <div id="checkoutItems"></div>
+        
+        <div style="margin: 20px 0;">
+            <strong>ค่าจัดส่ง:</strong> ฿45<br>
+            <strong>ค่าบริการ COD:</strong> ฿0<br>
+        </div>
+        
+        <div class="total" id="checkoutTotal">รวมทั้งสิ้น: ฿0</div>
+        
+        <div class="debug" id="checkoutDebug"></div>
+    </div>
+
+    <script>
+        // Product configuration
+        const product = {
+            _id: 'test-product-1',
+            name: 'เสื้อยืดคอกลม',
+            basePrice: 299,
+            discountPercent: 0,
+            options: [
+                {
+                    name: 'สี',
+                    values: [
+                        { value: 'แดง', price: 0, priceType: 'add' },
+                        { value: 'น้ำเงิน', price: 0, priceType: 'add' },
+                        { value: 'เขียว', price: 0, priceType: 'add' }
+                    ]
+                },
+                {
+                    name: 'ขนาด',
+                    values: [
+                        { value: 'S', price: 0, priceType: 'add' },
+                        { value: 'M', price: 50, priceType: 'add' },
+                        { value: 'L', price: 100, priceType: 'add' },
+                        { value: 'XL', price: 150, priceType: 'add' }
+                    ]
+                }
+            ]
+        };
+
+        let selectedOptions = {};
+
+        // Cart simulation
+        const CartManager = {
+            getCart() {
+                try {
+                    const raw = localStorage.getItem('test_cart');
+                    return raw ? JSON.parse(raw) : [];
+                } catch { return []; }
+            },
+            
+            addProduct(product, quantity = 1) {
+                const items = this.getCart();
+                const keyStr = product._id + '::' + JSON.stringify(product.selectedOptions || {});
+                
+                const item = {
+                    _id: product._id,
+                    name: product.name,
+                    price: product.price, // This should be the calculated price
+                    image: product.image,
+                    quantity,
+                    seller: product.seller,
+                    selectedOptions: product.selectedOptions,
+                    discountPercent: product.discountPercent || 0
+                };
+                
+                const idx = items.findIndex(it => {
+                    const itKeyStr = it._id + '::' + JSON.stringify(it.selectedOptions || {});
+                    return itKeyStr === keyStr;
+                });
+                
+                if (idx >= 0) {
+                    items[idx].quantity += quantity;
+                } else {
+                    items.push(item);
+                }
+                
+                localStorage.setItem('test_cart', JSON.stringify(items));
+                return items;
+            },
+            
+            clear() {
+                localStorage.setItem('test_cart', JSON.stringify([]));
+            }
+        };
+
+        function selectOption(optionName, optionValue, optionPrice) {
+            // Update UI
+            document.querySelectorAll('.option-button').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
+            
+            // Update selected options
+            selectedOptions[optionName] = optionValue;
+            
+            updateCalculation();
+        }
+
+        function updateCalculation() {
+            const quantity = parseInt(document.getElementById('quantity').value) || 1;
+            
+            // Calculate price based on selected options
+            let finalPrice = product.basePrice;
+            
+            if (product.options) {
+                product.options.forEach(option => {
+                    const selectedValue = selectedOptions[option.name];
+                    if (selectedValue) {
+                        const selectedOptionValue = option.values.find(v => v.value === selectedValue);
+                        if (selectedOptionValue) {
+                            if (selectedOptionValue.priceType === 'replace') {
+                                finalPrice = selectedOptionValue.price;
+                            } else {
+                                finalPrice += selectedOptionValue.price;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Apply discount
+            const discountedPrice = product.discountPercent > 0 
+                ? Math.round(finalPrice * (1 - product.discountPercent / 100))
+                : finalPrice;
+            
+            const totalPrice = discountedPrice * quantity;
+            
+            // Update display
+            document.getElementById('calculatedPrice').textContent = `฿${discountedPrice.toLocaleString()} ${quantity > 1 ? `(x${quantity} = ฿${totalPrice.toLocaleString()})` : ''}`;
+            
+            // Debug info
+            document.getElementById('productDebug').innerHTML = `
+                <strong>Debug - Product Calculation:</strong><br>
+                Base Price: ฿${product.basePrice.toLocaleString()}<br>
+                Selected Options: ${JSON.stringify(selectedOptions)}<br>
+                Price with Options: ฿${finalPrice.toLocaleString()}<br>
+                Discount: ${product.discountPercent}%<br>
+                Final Unit Price: ฿${discountedPrice.toLocaleString()}<br>
+                Quantity: ${quantity}<br>
+                Total: ฿${totalPrice.toLocaleString()}
+            `;
+        }
+
+        function addToCart() {
+            const quantity = parseInt(document.getElementById('quantity').value) || 1;
+            
+            // Calculate final price (same as updateCalculation)
+            let finalPrice = product.basePrice;
+            product.options.forEach(option => {
+                const selectedValue = selectedOptions[option.name];
+                if (selectedValue) {
+                    const selectedOptionValue = option.values.find(v => v.value === selectedValue);
+                    if (selectedOptionValue) {
+                        if (selectedOptionValue.priceType === 'replace') {
+                            finalPrice = selectedOptionValue.price;
+                        } else {
+                            finalPrice += selectedOptionValue.price;
+                        }
+                    }
+                }
+            });
+            
+            const discountedPrice = product.discountPercent > 0 
+                ? Math.round(finalPrice * (1 - product.discountPercent / 100))
+                : finalPrice;
+            
+            // Add to cart with calculated price
+            CartManager.addProduct({
+                ...product,
+                price: discountedPrice, // Use calculated price
+                selectedOptions: {...selectedOptions},
+                seller: 'test-seller'
+            }, quantity);
+            
+            updateCartDisplay();
+            alert(`เพิ่ม "${product.name}" ลงตะกร้าแล้ว!`);
+        }
+
+        function buyNow() {
+            addToCart();
+            goToCheckout();
+        }
+
+        function updateCartDisplay() {
+            const cart = CartManager.getCart();
+            const cartItemsEl = document.getElementById('cartItems');
+            const cartTotalEl = document.getElementById('cartTotal');
+            const cartDebugEl = document.getElementById('cartDebug');
+            
+            if (cart.length === 0) {
+                cartItemsEl.innerHTML = '<p>ตะกร้าว่าง</p>';
+                cartTotalEl.textContent = 'รวม: ฿0';
+                cartDebugEl.innerHTML = '';
+                return;
+            }
+            
+            let totalAmount = 0;
+            let itemsHtml = '';
+            
+            cart.forEach((item, index) => {
+                const itemTotal = (item.price || 0) * (item.quantity || 1);
+                totalAmount += itemTotal;
+                
+                itemsHtml += `
+                    <div class="cart-item">
+                        <strong>${item.name}</strong><br>
+                        ราคา: ฿${(item.price || 0).toLocaleString()} x ${item.quantity} = ฿${itemTotal.toLocaleString()}<br>
+                        ตัวเลือก: ${JSON.stringify(item.selectedOptions || {})}<br>
+                        Seller: ${item.seller || 'N/A'}
+                    </div>
+                `;
+            });
+            
+            cartItemsEl.innerHTML = itemsHtml;
+            cartTotalEl.textContent = `รวม: ฿${totalAmount.toLocaleString()}`;
+            
+            // Debug info
+            cartDebugEl.innerHTML = `
+                <strong>Debug - Cart Calculation:</strong><br>
+                Items: ${cart.length}<br>
+                Raw Cart Data: ${JSON.stringify(cart, null, 2)}<br>
+                Subtotal: ฿${totalAmount.toLocaleString()}
+            `;
+            
+            updateCheckoutDisplay();
+        }
+
+        function goToCheckout() {
+            updateCheckoutDisplay();
+            document.querySelector('div:nth-child(4)').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateCheckoutDisplay() {
+            const cart = CartManager.getCart();
+            const checkoutItemsEl = document.getElementById('checkoutItems');
+            const checkoutTotalEl = document.getElementById('checkoutTotal');
+            const checkoutDebugEl = document.getElementById('checkoutDebug');
+            
+            if (cart.length === 0) {
+                checkoutItemsEl.innerHTML = '<p>ไม่มีสินค้าในตะกร้า</p>';
+                checkoutTotalEl.textContent = 'รวมทั้งสิ้น: ฿0';
+                checkoutDebugEl.innerHTML = '';
+                return;
+            }
+            
+            // Simulate checkout calculation (same as actual checkout page)
+            let subtotal = 0;
+            let itemsHtml = '';
+            
+            cart.forEach((item, index) => {
+                const itemPrice = item.price || 0;
+                const itemQty = item.quantity || 1;
+                const itemTotal = itemPrice * itemQty;
+                subtotal += itemTotal;
+                
+                itemsHtml += `
+                    <div class="cart-item">
+                        <strong>${item.name}</strong><br>
+                        ราคาต่อหน่วย: ฿${itemPrice.toLocaleString()}<br>
+                        จำนวน: ${itemQty}<br>
+                        รวม: ฿${itemTotal.toLocaleString()}<br>
+                        ตัวเลือก: ${JSON.stringify(item.selectedOptions || {})}<br>
+                    </div>
+                `;
+            });
+            
+            const shipping = 45;
+            const codFee = 0;
+            const total = subtotal + shipping + codFee;
+            
+            checkoutItemsEl.innerHTML = itemsHtml;
+            checkoutTotalEl.innerHTML = `
+                <div>ยอดสินค้า: ฿${subtotal.toLocaleString()}</div>
+                <div>ค่าจัดส่ง: ฿${shipping.toLocaleString()}</div>
+                <div>ค่าบริการ: ฿${codFee.toLocaleString()}</div>
+                <div style="border-top: 2px solid #333; padding-top: 10px; margin-top: 10px;">
+                    รวมทั้งสิ้น: ฿${total.toLocaleString()}
+                </div>
+            `;
+            
+            // Debug info
+            checkoutDebugEl.innerHTML = `
+                <strong>Debug - Checkout Calculation:</strong><br>
+                Subtotal Calculation: cart.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0)<br>
+                Subtotal: ฿${subtotal.toLocaleString()}<br>
+                Shipping: ฿${shipping.toLocaleString()}<br>
+                COD Fee: ฿${codFee.toLocaleString()}<br>
+                Final Total: ฿${total.toLocaleString()}<br><br>
+                Items Detail:<br>
+                ${cart.map((item, i) => 
+                    `${i+1}. ${item.name}: ฿${item.price} × ${item.quantity} = ฿${(item.price || 0) * (item.quantity || 1)}`
+                ).join('<br>')}
+            `;
+        }
+
+        function clearCart() {
+            CartManager.clear();
+            updateCartDisplay();
+        }
+
+        // Initialize
+        window.onload = function() {
+            updateCalculation();
+            updateCartDisplay();
+        };
+    </script>
+</body>
+</html>
