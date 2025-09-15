@@ -114,6 +114,55 @@ export async function POST(req: Request) {
   }
 }
 
+/* PUT update product */
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json()
+    const { username, productId, item } = body
+    
+    if (!username || !productId || !item) {
+      return NextResponse.json({ error: 'invalid payload' }, { status: 400 })
+    }
+
+    const client = await clientPromise
+    if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
+    const db = (client as any).db()
+    
+    // Convert productId to ObjectId if it's a valid ObjectId string
+    let filter: any
+    try {
+      if (ObjectId.isValid(productId)) {
+        filter = { _id: new ObjectId(productId), username }
+      } else {
+        filter = { _id: productId, username }
+      }
+    } catch {
+      filter = { _id: productId, username }
+    }
+
+    const updateDoc = {
+      name: item.name,
+      price: typeof item.price === 'string' ? (Number(item.price) || item.price) : item.price,
+      category: item.category || '',
+      description: item.desc || '',
+      desc: item.desc || '',
+      options: Array.isArray(item.options) ? item.options : [],
+      updatedAt: new Date()
+    }
+
+    const result = await db.collection('seller_products').updateOne(filter, { $set: updateDoc })
+    
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: 'product not found or unauthorized' }, { status: 404 })
+    }
+
+    return NextResponse.json({ ok: true, modified: result.modifiedCount })
+  } catch (err) {
+    console.error('PUT /api/seller-products error', err)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
+  }
+}
+
 /* DELETE /api/seller-products?id=... */
 export async function DELETE(req: Request) {
   try {

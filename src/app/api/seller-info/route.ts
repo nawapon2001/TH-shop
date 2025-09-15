@@ -6,14 +6,19 @@ export const dynamic = 'force-dynamic'
 
 type SellerInfo = {
   username: string
-  fullName: string
-  email: string
-  phone: string
-  shopName: string
-  birthDate: string
-  province: string
-  address: string
+  fullName?: string
+  email?: string
+  phone?: string
+  shopName?: string
+  description?: string
+  birthDate?: string
+  province?: string
+  address?: string
   image?: string
+  shopImage?: string
+  bankAccount?: string
+  bankName?: string
+  accountHolderName?: string
   _id?: string
 }
 
@@ -61,6 +66,7 @@ export async function POST(req: Request) {
     // ensure unique username
     await db.collection('sellers').createIndex({ username: 1 }, { unique: true })
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...bodyWithoutId } = body
     const seller = { ...bodyWithoutId, createdAt: new Date(), updatedAt: new Date() }
     const result = await db.collection('sellers').insertOne(seller)

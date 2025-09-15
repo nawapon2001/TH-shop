@@ -6,21 +6,48 @@ import mongoose from 'mongoose'
 type ProductOption = { name: string; values: string[] }
 const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
 
-function normalizeOptions(raw: any): ProductOption[] {
+function normalizeOptions(raw: any): any[] {
   if (Array.isArray(raw) && raw.every(o => typeof o === 'object' && Array.isArray(o?.values))) {
     return (raw as any[]).map(o => ({
       name: ensureString(o.name),
-      values: (o.values || []).map(ensureString).filter(Boolean)
+      values: (o.values || []).map((v: any) => {
+        // รองรับทั้งแบบเก่า (string) และแบบใหม่ (object)
+        if (typeof v === 'string') {
+          return { value: ensureString(v), price: 0, priceType: 'add' }
+        } else if (typeof v === 'object' && v !== null && v.value) {
+          return {
+            value: ensureString(v.value),
+            price: v.price || 0,
+            priceType: v.priceType || 'add'
+          }
+        }
+        return { value: ensureString(v), price: 0, priceType: 'add' }
+      }).filter((v: any) => v.value)
     })).filter(o => o.name && o.values.length)
   }
   if (Array.isArray(raw) && raw.every(v => typeof v === 'string' || typeof v === 'number')) {
-    const values = (raw as Array<string|number>).map(ensureString).filter(Boolean)
+    const values = (raw as Array<string|number>).map(v => ({
+      value: ensureString(v),
+      price: 0,
+      priceType: 'add'
+    })).filter(v => v.value)
     return values.length ? [{ name: 'ตัวเลือก', values }] : []
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     return Object.entries(raw).map(([k, vals]) => ({
       name: ensureString(k),
-      values: Array.isArray(vals) ? (vals as any[]).map(ensureString).filter(Boolean) : []
+      values: Array.isArray(vals) ? (vals as any[]).map((v: any) => {
+        if (typeof v === 'string') {
+          return { value: ensureString(v), price: 0, priceType: 'add' }
+        } else if (typeof v === 'object' && v !== null && v.value) {
+          return {
+            value: ensureString(v.value),
+            price: v.price || 0,
+            priceType: v.priceType || 'add'
+          }
+        }
+        return { value: ensureString(v), price: 0, priceType: 'add' }
+      }).filter((v: any) => v.value) : []
     })).filter(o => o.name && o.values.length)
   }
   return []

@@ -100,6 +100,7 @@ export default function ProductOptionsManager({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-800">ตัวเลือกสินค้า</h3>
         <button
+          type="button"
           onClick={addNewOption}
           className="flex items-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
         >
@@ -133,6 +134,7 @@ export default function ProductOptionsManager({
               )}
             </div>
             <button
+              type="button"
               onClick={() => removeOption(optionIndex)}
               className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
             >
@@ -181,6 +183,7 @@ export default function ProductOptionsManager({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => removeValue(optionIndex, valueIndex)}
                   className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                 >
@@ -190,6 +193,7 @@ export default function ProductOptionsManager({
             ))}
             
             <button
+              type="button"
               onClick={() => addValueToOption(optionIndex)}
               className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 rounded-lg hover:border-orange-300 hover:text-orange-500 transition-colors"
             >
@@ -202,7 +206,7 @@ export default function ProductOptionsManager({
       {options.length === 0 && (
         <div className="text-center py-8 text-gray-500">
           <p>ยังไม่มีตัวเลือกสินค้า</p>
-          <p className="text-sm">คลิก "เพิ่มตัวเลือก" เพื่อเริ่มต้น</p>
+          <p className="text-sm">คลิก &quot;เพิ่มตัวเลือก&quot; เพื่อเริ่มต้น</p>
         </div>
       )}
 

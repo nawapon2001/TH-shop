@@ -11,9 +11,16 @@ export async function GET() {
     const db = client.db('signshop'); // ใช้ชื่อ database ของคุณ
     const categories = await db.collection('categories').find({}).toArray();
     
-    // ส่งกลับเป็น array ของ string ชื่อหมวดหมู่
-    const categoryNames = categories.map((cat: any) => cat.name);
-    return NextResponse.json(categoryNames);
+    // ส่งกลับข้อมูลเต็มของหมวดหมู่
+    const categoryData = categories.map((cat: any) => ({
+      name: cat.name,
+      icon: cat.icon || null,
+      iconType: cat.iconType || null,
+      iconName: cat.iconName || null,
+      createdAt: cat.createdAt
+    }));
+    
+    return NextResponse.json(categoryData);
   } catch (error) {
     console.error('Error fetching categories:', error);
     return NextResponse.json([], { status: 500 });
@@ -24,7 +31,9 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const name = formData.get('name');
-    const icon = formData.get('icon');
+    const iconType = formData.get('iconType'); // 'system' หรือ 'upload'
+    const iconName = formData.get('iconName'); // ชื่อไอคอนจากระบบ
+    const icon = formData.get('icon'); // ไฟล์ที่อัปโหลด
     
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ message: 'ชื่อหมวดหมู่ไม่ถูกต้อง' }, { status: 400 });
@@ -43,12 +52,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'หมวดหมู่นี้มีอยู่แล้ว' }, { status: 400 });
     }
 
-    // เพิ่มหมวดหมู่ใหม่
-    await db.collection('categories').insertOne({ 
+    // เตรียมข้อมูลหมวดหมู่
+    const categoryData: any = { 
       name, 
-      icon: icon || null,
       createdAt: new Date() 
-    });
+    };
+
+    // เพิ่มข้อมูลไอคอนตามประเภท
+    if (iconType === 'system' && iconName) {
+      categoryData.iconType = 'system';
+      categoryData.iconName = iconName;
+    } else if (iconType === 'upload' && icon) {
+      categoryData.iconType = 'upload';
+      categoryData.icon = icon; // ในระบบจริงควรบันทึกเป็น URL หลังจากอัปโหลดไฟล์
+    }
+
+    // เพิ่มหมวดหมู่ใหม่
+    await db.collection('categories').insertOne(categoryData);
 
     return NextResponse.json({ message: 'เพิ่มหมวดหมู่สำเร็จ' });
   } catch (error) {
