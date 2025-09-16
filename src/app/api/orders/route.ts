@@ -10,7 +10,13 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase()
     const id = req.nextUrl.searchParams.get('id')
+<<<<<<< Updated upstream
   const seller = req.nextUrl.searchParams.get('seller')
+=======
+    const seller = req.nextUrl.searchParams.get('seller')
+    const customerEmail = req.nextUrl.searchParams.get('customerEmail')
+    const customerName = req.nextUrl.searchParams.get('customerName')
+>>>>>>> Stashed changes
 
     if (id) {
       if (!mongoose.isValidObjectId(id)) {
@@ -21,7 +27,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(doc, { headers: { 'Cache-Control': 'no-store' } })
     }
 
+<<<<<<< Updated upstream
     // ถ้าระบุ seller ให้คืนเฉพาะคำสั่งซื้อที่มี item.seller เท่ากับค่านั้น
+=======
+    // สร้าง where clause สำหรับการกรองข้อมูล
+    let whereClause: any = {}
+    
+>>>>>>> Stashed changes
     if (seller) {
       try {
         // find orders where at least one item.seller matches OR item.productId belongs to seller's products
@@ -48,19 +60,91 @@ export async function GET(req: NextRequest) {
         const docs = await Order.find({ 'items.seller': seller }).sort({ createdAt: -1 }).lean()
         return NextResponse.json(docs, { headers: { 'Cache-Control': 'no-store' } })
       }
+    } else if (customerEmail || customerName) {
+      // กรองตาม customer email หรือ name ใน customerInfo
+      const customerFilters = []
+      
+      if (customerEmail) {
+        customerFilters.push({
+          customerInfo: {
+            path: '$.email',
+            string_contains: customerEmail
+          }
+        })
+        // เพิ่มการค้นหาแบบ exact match ด้วย
+        customerFilters.push({
+          customerInfo: {
+            path: '$.email',
+            equals: customerEmail
+          }
+        })
+      }
+      
+      if (customerName) {
+        customerFilters.push({
+          customerInfo: {
+            path: '$.name',
+            string_contains: customerName
+          }
+        })
+        // เพิ่มการค้นหาแบบ exact match ด้วย
+        customerFilters.push({
+          customerInfo: {
+            path: '$.name',
+            equals: customerName
+          }
+        })
+      }
+      
+      whereClause = {
+        OR: customerFilters
+      }
     }
 
+<<<<<<< Updated upstream
     // ทั้งหมด (ใหม่ -> เก่า)
     const docs = await Order.find().sort({ createdAt: -1 }).lean()
     return NextResponse.json(docs, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e) {
     return NextResponse.json({ message: 'GET error' }, { status: 500 })
+=======
+    console.log('🔍 Orders API - Filter params:', {
+      seller,
+      customerEmail,
+      customerName,
+      whereClause
+    })
+
+    const orders = await prisma.order.findMany({
+      where: whereClause,
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    console.log(`📦 Orders API - Found ${orders.length} orders`)
+
+    // Transform to match frontend expectations
+    const transformedOrders = orders.map(order => ({
+      _id: order.id.toString(),
+      ...order
+    }))
+
+    return NextResponse.json(transformedOrders, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
+    console.error('Error fetching orders:', error)
+    return NextResponse.json({ 
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลคำสั่งซื้อ',
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 })
+>>>>>>> Stashed changes
   }
 }
 
 // POST /api/orders  (ถ้าคุณต้องการ endpoint สร้างออเดอร์)
 export async function POST(req: NextRequest) {
   try {
+<<<<<<< Updated upstream
     await connectToDatabase()
     // Support both JSON and multipart FormData (transfer + slip)
     let body: any = {}
@@ -81,12 +165,59 @@ export async function POST(req: NextRequest) {
           body.sellers = typeof sellersField === 'string' ? JSON.parse(sellersField) : JSON.parse(String(sellersField))
         } catch (e) {
           // ignore parse error
+=======
+    const data = await req.json()
+    
+    // Debug logging
+    console.log('🛒 Orders API - Received data:', {
+      totalAmount: data.totalAmount,
+      totalAmountType: typeof data.totalAmount,
+      customerInfo: data.customerInfo,
+      name: data.name,
+      phone: data.phone,
+      items: data.items
+    })
+
+    // Auto-generate orderNumber if not provided
+    let orderNumber = data.orderNumber?.trim()
+    if (!orderNumber) {
+      // Generate unique order number: ORD-YYYYMMDD-HHMMSS-RAND
+      const now = new Date()
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
+      const randStr = Math.random().toString(36).substr(2, 4).toUpperCase()
+      orderNumber = `ORD-${dateStr}-${timeStr}-${randStr}`
+    }
+
+    // Validate and convert totalAmount - support both old and new format
+    let totalAmount = data.totalAmount
+    
+    // If totalAmount not provided but amounts.total exists (new format)
+    if (!totalAmount && data.amounts?.total) {
+      totalAmount = data.amounts.total
+    }
+    
+    // Convert to number if string
+    if (typeof totalAmount === 'string') {
+      totalAmount = parseFloat(totalAmount)
+    }
+
+    if (!totalAmount || totalAmount <= 0 || isNaN(totalAmount)) {
+      return NextResponse.json({ 
+        message: 'กรุณาระบุยอดรวมที่ถูกต้อง',
+        debug: {
+          receivedTotalAmount: data.totalAmount,
+          receivedAmounts: data.amounts,
+          finalTotalAmount: totalAmount,
+          type: typeof totalAmount
+>>>>>>> Stashed changes
         }
       }
     } else {
       body = await req.json()
     }
 
+<<<<<<< Updated upstream
     const { name, address, phone, items = [], payment, delivery, amounts, sellers } = body || {}
     if (!name || !address || !phone || !Array.isArray(items)) {
       return NextResponse.json({ message: 'invalid payload' }, { status: 400 })
@@ -105,6 +236,20 @@ export async function POST(req: NextRequest) {
     const toSave: any = { name, address, phone, items: normalizedItems, payment, delivery, amounts }
     if (sellers && typeof sellers === 'object' && Object.keys(sellers).length) {
       toSave.sellers = sellers
+=======
+    // If customerInfo exists but missing name/phone, try to get from top-level fields
+    if (customerInfo) {
+      if (!customerInfo.name && data.name) {
+        customerInfo.name = data.name
+      }
+      if (!customerInfo.phone && data.phone) {
+        customerInfo.phone = data.phone
+      }
+    }
+
+    if (!customerInfo || !customerInfo.name || !customerInfo.phone) {
+      return NextResponse.json({ message: 'กรุณาระบุข้อมูลลูกค้า (ชื่อ และ เบอร์โทร)' }, { status: 400 })
+>>>>>>> Stashed changes
     }
 
     // Optional: log incoming order payload in development for debugging

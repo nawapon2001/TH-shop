@@ -1,0 +1,42 @@
+# Ignore build artifacts
+.next/
+out/
+build/
+dist/
+
+# Environment files
+.env.local
+.env.production
+.env.development
+.env
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Database
+*.db
+dev.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment
+*.tgz
+*.tar.gz

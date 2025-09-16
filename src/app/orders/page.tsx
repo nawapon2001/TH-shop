@@ -54,17 +54,54 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [authenticated, setAuthenticated] = useState(false)
 
   // Update document title
   useEffect(() => {
     document.title = 'คำสั่งซื้อของฉัน | TH-THAI SHOP'
   }, [])
 
+  // Check authentication
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    try {
+      // ตรวจสอบจาก localStorage
+      const user = localStorage.getItem('user')
+      const userEmail = localStorage.getItem('currentUserEmail') || localStorage.getItem('userEmail')
+      
+      if (user || userEmail) {
+        setCurrentUser(user || userEmail)
+        setAuthenticated(true)
+      } else {
+        // ถ้าไม่มี user ให้ redirect ไปหน้า login พร้อม returnUrl
+        const currentPath = window.location.pathname + window.location.search
+        window.location.href = `/login?returnUrl=${encodeURIComponent(currentPath)}`
+        return
+      }
+    } catch (err) {
+      console.error('Error checking authentication:', err)
+      window.location.href = '/login'
+      return
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!authenticated || !currentUser) return
+
     const fetchOrders = async () => {
       try {
         setLoading(true)
-        const res = await fetch('/api/orders', { cache: 'no-store' })
+        // ส่ง user identifier ไปกับ API เพื่อกรองคำสั่งซื้อ
+        const params = new URLSearchParams()
+        if (currentUser.includes('@')) {
+          params.append('customerEmail', currentUser)
+        } else {
+          params.append('customerName', currentUser)
+        }
+        
+        const res = await fetch(`/api/orders?${params.toString()}`, { cache: 'no-store' })
         const data = await res.json()
         setOrders(Array.isArray(data) ? data : [])
       } catch {
@@ -74,7 +111,7 @@ export default function OrdersPage() {
       }
     }
     fetchOrders()
-  }, [])
+  }, [authenticated, currentUser])
 
   // ใหม่ → เก่า
   const sortedOrders = useMemo(() => {
@@ -107,14 +144,24 @@ export default function OrdersPage() {
             <div className="mx-auto w-16 h-16 rounded-full bg-orange-100 grid place-items-center mb-3">
               <Package className="w-7 h-7 text-orange-700" />
             </div>
-            <div className="text-lg font-semibold text-orange-800">ยังไม่มีคำสั่งซื้อ</div>
-            <p className="text-gray-600 mt-1">เริ่มช้อปปิ้งและกลับมาดูคำสั่งซื้อที่นี่ได้เลย</p>
-            <a
-              href="/"
-              className="inline-block mt-4 px-5 h-11 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700"
-            >
-              ไปหน้าสินค้า
-            </a>
+            <div className="text-lg font-semibold text-orange-800">ไม่พบคำสั่งซื้อของคุณ</div>
+            <p className="text-gray-600 mt-1">คุณยังไม่มีคำสั่งซื้อในระบบ หรือลองตรวจสอบข้อมูลการเข้าสู่ระบบ</p>
+            <div className="flex gap-3 justify-center mt-4">
+              <a
+                href="/"
+                className="inline-flex items-center gap-2 px-5 h-11 rounded-full bg-orange-600 text-white font-semibold hover:bg-orange-700"
+              >
+                <Package className="w-4 h-4" />
+                เริ่มช้อปปิ้ง
+              </a>
+              <a
+                href="/profile"
+                className="inline-flex items-center gap-2 px-5 h-11 rounded-full border border-orange-600 text-orange-600 font-semibold hover:bg-orange-50"
+              >
+                <User className="w-4 h-4" />
+                ตรวจสอบโปรไฟล์
+              </a>
+            </div>
           </div>
         ) : (
           <div className="space-y-5">
@@ -132,12 +179,6 @@ export default function OrdersPage() {
 function OrderCard({ order }: { order: Order }) {
   const [open, setOpen] = useState(true)
   const [openChat, setOpenChat] = useState(false)
-
-  const handlePrintReceipt = (order: Order) => {
-    // สร้าง URL สำหรับหน้าพิมพ์ใบเสร็จ
-    const printUrl = `/print-receipt/${order._id}`
-    window.open(printUrl, '_blank')
-  }
 
   const items = Array.isArray(order.items) ? order.items : []
   const calcSubtotal = items.reduce((s, it) => s + (it.price || 0) * (it.qty || 1), 0)
@@ -196,6 +237,19 @@ function OrderCard({ order }: { order: Order }) {
         </div>
       </div>
 
+      {/* Customer Info Section */}
+      <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+        <h3 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-2">
+          <User className="w-4 h-4" />
+          ข้อมูลผู้สั่ง
+        </h3>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <InfoRow icon={<User className="w-4 h-4" />} label="ชื่อ" value={order.name || (order as any).customerInfo?.name || '-'} />
+          <InfoRow icon={<Phone className="w-4 h-4" />} label="โทรศัพท์" value={order.phone || (order as any).customerInfo?.phone || '-'} />
+          <InfoRow icon={<MapPin className="w-4 h-4" />} label="ที่อยู่" value={order.address || (order as any).customerInfo?.address || '-'} />
+        </div>
+      </div>
+
       {/* Top preview + summary */}
       <div className="mt-4 grid gap-4 md:grid-cols-[160px_1fr] items-start">
         {/* preview รูปใหญ่ด้านซ้าย */}
@@ -236,13 +290,6 @@ function OrderCard({ order }: { order: Order }) {
         </div>
       </div>
 
-      {/* Address & contact */}
-      <div className="grid sm:grid-cols-3 gap-3 mt-4">
-        <InfoRow icon={<User className="w-4 h-4" />} label="ผู้รับ" value={order.name || '-'} />
-        <InfoRow icon={<Phone className="w-4 h-4" />} label="โทร" value={order.phone || '-'} />
-        <InfoRow icon={<MapPin className="w-4 h-4" />} label="ที่อยู่" value={order.address || '-'} />
-      </div>
-
       {/* Items */}
       <div className="mt-4">
         <button
@@ -268,6 +315,12 @@ function OrderCard({ order }: { order: Order }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 line-clamp-1">{it.name ?? '-'}</div>
                     <div className="text-xs text-gray-500">จำนวน {it.qty || 1} ชิ้น</div>
+                    {(it as any).seller && (
+                      <div className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+                        <Package className="w-3 h-3" />
+                        ขายโดย: {(it as any).seller}
+                      </div>
+                    )}
                   </div>
                   <div className="text-sm font-semibold text-gray-800">฿{formatTHB(it.price ?? 0)}</div>
                 </li>

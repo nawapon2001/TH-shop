@@ -4,9 +4,31 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+<<<<<<< Updated upstream
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
+=======
+    "build": "prisma generate && cross-env NODE_ENV=production next build",
+    "build:safe": "cross-env NODE_ENV=production NODE_OPTIONS=\"--max-old-space-size=4096\" next build",
+    "build:standalone": "prisma generate && cross-env NODE_ENV=production NODE_OPTIONS=\"--max-old-space-size=4096\" next build",
+    "start": "cross-env NODE_ENV=production next start",
+    "start:prod": "cross-env NODE_ENV=production PORT=3000 next start",
+    "start:standalone": "cross-env NODE_ENV=production node .next/standalone/server.js",
+    "lint": "next lint",
+    "test:mysql": "tsx scripts/test-mysql.ts",
+    "test:prisma": "tsx scripts/test-prisma.ts",
+    "test:api": "tsx scripts/test-api.ts",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:test": "node scripts/test-db-connection.js",
+    "db:test-cred": "node scripts/test-credentials.js",
+    "db:local": "cross-env DATABASE_URL=\"mysql://root:@localhost:3306/signshop_local\" npm run db:push",
+    "migrate:mongo-to-mysql": "node scripts/migrate-mongo-to-mysql.js",
+    "migrate:data": "tsx scripts/migrate-to-mysql.ts"
+>>>>>>> Stashed changes
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",

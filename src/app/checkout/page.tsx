@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '../../components/Header'
 import { CartManager } from '@/lib/cart-utils'
+import { checkUserAuthentication, redirectToLogin } from '@/lib/auth-utils'
 import Swal from 'sweetalert2'
 import {
   ShoppingBag, Truck, CreditCard, Wallet, MapPin, Phone, User, ArrowLeft, Loader2, Package, QrCode, CheckCircle2, XCircle, Upload
@@ -48,6 +49,42 @@ type ProfileStorage = {
 export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [name, setName] = useState('')
+  const [authenticated, setAuthenticated] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'ชำระเงิน | TH-THAI SHOP'
+  }, [])
+
+  // Check authentication first
+  useEffect(() => {
+    const { isAuthenticated } = checkUserAuthentication()
+    
+    if (!isAuthenticated) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'กรุณาเข้าสู่ระบบ',
+        text: 'กรุณาเข้าสู่ระบบก่อนทำการสั่งซื้อสินค้า',
+        confirmButtonText: 'เข้าสู่ระบบ',
+        confirmButtonColor: '#ea580c'
+      }).then(() => {
+        redirectToLogin('/checkout')
+      })
+      return
+    }
+
+    // Get user email from localStorage
+    const currentUserEmail = localStorage.getItem('currentUserEmail') || 
+                            localStorage.getItem('userEmail') || 
+                            localStorage.getItem('user') || ''
+    setUserEmail(currentUserEmail)
+
+    setAuthenticated(true)
+    setAuthChecked(true)
+  }, [])
+
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
@@ -56,10 +93,6 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  // Update document title
-  useEffect(() => {
-    document.title = 'ชำระเงิน | TH-THAI SHOP'
-  }, [])
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [slipPreview, setSlipPreview] = useState<string>('')
   const [slipHash, setSlipHash] = useState<string>('')
@@ -343,6 +376,10 @@ export default function CheckoutPage() {
             items: orderData.items,
             amounts: orderData.amounts,
             sellers: orderData.sellers,
+            customerInfo: {
+              name: name,
+              email: userEmail || ''
+            },
             promptpay: { number: promptPayNumber, url: promptPayQRUrl, amount: orderData.amounts.total.toFixed(2) },
             transfer: { declaredAmount: Number(parseFloat((transferAmountInput || orderData.amounts.total.toFixed(2)) as string).toFixed(2)), slipHash }
           }))
@@ -380,7 +417,11 @@ export default function CheckoutPage() {
             payment,
             items: orderData.items,
             amounts: orderData.amounts,
-            sellers: orderData.sellers
+            sellers: orderData.sellers,
+            customerInfo: {
+              name: name,
+              email: userEmail || ''
+            }
           }
 
           if (process.env.NODE_ENV !== 'production') {
@@ -428,20 +469,46 @@ export default function CheckoutPage() {
     }
   }
 
+  // Early return for authentication checks
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-slate-50">
+        <Header />
+        <div className="max-w-7xl mx-auto px-6 py-20 text-center">
+          <div className="inline-flex items-center gap-2 text-orange-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            กำลังตรวจสอบสิทธิ์...
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-slate-50">
+        <Header />
+        <div className="max-w-7xl mx-auto px-6 py-20 text-center">
+          <div className="text-orange-600">กำลังเปลี่ยนเส้นทางไปหน้าเข้าสู่ระบบ...</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 to-slate-50">
       <Header />
-      <div className="max-w-7xl mx-auto px-6 py-10 md:py-12">
-        {/* Title Row */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 text-orange-700 hover:text-orange-900"
-          >
-            <ArrowLeft className="w-4 h-4" /> กลับ
-          </button>
-          <h1 className="text-xl md:text-2xl font-extrabold text-orange-800">ชำระเงิน / Checkout</h1>
-          <div className="w-14" />
+        <div className="max-w-7xl mx-auto px-6 py-10 md:py-12">
+          {/* Title Row */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 text-orange-700 hover:text-orange-900"
+            >
+              <ArrowLeft className="w-4 h-4" /> กลับ
+            </button>
+            <h1 className="text-xl md:text-2xl font-extrabold text-orange-800">ชำระเงิน / Checkout</h1>
+            <div className="w-14" />
         </div>
 
         <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-6">
