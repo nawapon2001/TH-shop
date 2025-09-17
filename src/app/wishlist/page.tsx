@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import Header from '../../components/Header'
 import Link from 'next/link'
+import { safeProductHref } from '@/lib/product-utils'
 import { Heart, Loader2, Trash2 } from 'lucide-react'
 import Swal from 'sweetalert2'
 
@@ -127,7 +128,7 @@ export default function WishlistPage() {
           <ul className="grid gap-4">
             {wishlist.map((item: any) => (
               <li key={item.id} className="rounded-xl border border-orange-200 bg-white p-4 flex items-center gap-4 shadow-sm">
-                <Link href={`/product/${encodeURIComponent(item.id)}`} className="flex-1 flex items-center gap-4 no-underline">
+                <Link href={safeProductHref(item)} className="flex-1 flex items-center gap-4 no-underline">
                   <img src={resolveImgSrc(item.image || (item.images && item.images[0]))} alt={item.name} className="w-16 h-16 object-cover rounded-lg border" onError={(e)=>{(e.currentTarget as HTMLImageElement).src = THUMB_PLACEHOLDER}} />
                   <div>
                     <div className="font-semibold text-orange-700">{item.name}</div>

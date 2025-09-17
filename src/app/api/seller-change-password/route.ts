@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import clientPromise from '@/lib/mongodb'
+import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
 export const dynamic = 'force-dynamic'
@@ -22,55 +22,31 @@ export async function POST(req: Request) {
       )
     }
 
-    const client = await clientPromise
-    if (!client) {
-      return NextResponse.json(
-        { error: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' }, 
-        { status: 500 }
-      )
+    // Try seller first, then user
+    const seller = await prisma.seller.findUnique({ where: { username } })
+    let user = null
+    if (!seller) {
+      user = await prisma.user.findUnique({ where: { username } })
     }
 
-    const db = (client as any).db()
-    
-    // Find user in both collections
-    let user = await db.collection('sellers').findOne({ username })
-    let collection = 'sellers'
-    
-    if (!user) {
-      user = await db.collection('users').findOne({ username })
-      collection = 'users'
+    if (!seller && !user) {
+      return NextResponse.json({ error: 'ไม่พบผู้ใช้ในระบบ' }, { status: 404 })
     }
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'ไม่พบผู้ใช้ในระบบ' }, 
-        { status: 404 }
-      )
-    }
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password)
+    // Determine stored password
+    const storedHash = seller ? seller.password : (user as any).password
+    const isValidPassword = await bcrypt.compare(currentPassword, storedHash || '')
     if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' }, 
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' }, { status: 401 })
     }
 
-    // Hash new password
-    const saltRounds = 10
-    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds)
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10)
 
-    // Update password
-    await db.collection(collection).updateOne(
-      { username },
-      { 
-        $set: { 
-          password: hashedNewPassword,
-          updatedAt: new Date()
-        }
-      }
-    )
+    if (seller) {
+      await prisma.seller.update({ where: { username }, data: { password: hashedNewPassword } })
+    } else if (user) {
+      await prisma.user.update({ where: { username }, data: { password: hashedNewPassword } })
+    }
 
     return NextResponse.json({ 
       success: true,

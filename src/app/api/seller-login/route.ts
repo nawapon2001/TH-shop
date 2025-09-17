@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MongoClient } from 'mongodb'
+import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017'
-const DB_NAME = process.env.DB_NAME || 'thai'
-const COLLECTION = 'sellers'
-
 export async function POST(req: NextRequest) {
-  let client: MongoClient | null = null
   try {
     const body = await req.json()
     const { username, password } = body
@@ -15,30 +10,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' }, { status: 400 })
     }
 
-    client = await MongoClient.connect(MONGO_URI)
-    const db = client.db(DB_NAME)
-    const sellers = db.collection(COLLECTION)
-
-    const seller = await sellers.findOne({ username })
+    const seller = await prisma.seller.findUnique({
+      where: { username }
+    })
+    
     if (!seller) {
       return NextResponse.json({ message: 'ไม่พบผู้ใช้' }, { status: 401 })
     }
 
-    const match = await bcrypt.compare(password, seller.password)
+    const match = await bcrypt.compare(password, seller.password || '')
     if (!match) {
       return NextResponse.json({ message: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
     }
 
-  // ส่งข้อมูลผู้ขาย (ไม่รวมรหัสผ่าน) และคืน token แบบเดโม
-  const { password: _, ...safeSeller } = seller
-  const token = Math.random().toString(36).slice(2) // demo token; replace with real JWT if needed
+    return NextResponse.json({ 
+      message: 'เข้าสู่ระบบสำเร็จ', 
+      seller: {
+        id: seller.id,
+        username: seller.username,
+        shopName: seller.shopName,
+        email: seller.email
+      }
+    })
 
-  // หากไม่มีข้อมูลหน้าร้าน/ชื่อร้าน ให้แจ้ง client ว่าต้องไปหน้าเปิดร้าน
-  const needsProfile = !(safeSeller.shopName || safeSeller.fullName)
-  return NextResponse.json({ ok: true, seller: safeSeller, token, needsProfile })
   } catch (err) {
-    return NextResponse.json({ message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' }, { status: 500 })
-  } finally {
-    try { if (client) await client.close() } catch {}
+    console.error('Seller login error:', err)
+    return NextResponse.json({ message: 'เกิดข้อผิดพลาดภายในระบบ' }, { status: 500 })
   }
 }

@@ -34,9 +34,9 @@ export async function POST(req: Request) {
       urls.push(`/uploads/${filename}`)
     }
 
-    return NextResponse.json({ urls })
+    return new Response(JSON.stringify({ urls }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   } catch (err) {
     console.error('upload error', err)
-    return NextResponse.json({ message: 'upload error' }, { status: 500 })
+    return new Response(JSON.stringify({ message: 'upload error' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 }

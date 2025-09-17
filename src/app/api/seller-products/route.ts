@@ -1,5 +1,4 @@
-import clientPromise from '@/lib/mongodb'
-import { ObjectId } from 'mongodb'
+import prisma from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
 type ProductPayload = {
@@ -21,61 +20,112 @@ export async function GET(req: Request) {
     const username = url.searchParams.get('username')
     const id = url.searchParams.get('id')
 
-    const client = await clientPromise
-    if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
-    const db = (client as any).db()
-
     // GET by id
     if (id) {
-      // allow both string ids and ObjectId
-      try {
-        const doc = await db.collection('seller_products').findOne({ _id: new ObjectId(id) })
-  if (!doc) return NextResponse.json(null, { status: 404 })
-  // normalize images/options for clients and expose a single 'image' shortcut
-  const images = Array.isArray(doc.images) ? doc.images : (doc.image ? [doc.image] : [])
-  const options = Array.isArray(doc.options) ? doc.options : []
-  const image = images.length ? images[0] : (doc.image || '')
-  return NextResponse.json({ ...doc, _id: String(doc._id), images, options, image })
-      } catch {
-        // fallback: try to find by string id field
-        const doc = await db.collection('seller_products').findOne({ _id: id })
-  if (!doc) return NextResponse.json(null, { status: 404 })
-  const images = Array.isArray((doc as any).images) ? (doc as any).images : ((doc as any).image ? [(doc as any).image] : [])
-  const options = Array.isArray((doc as any).options) ? (doc as any).options : []
-  const image = images.length ? images[0] : ((doc as any).image || '')
-  return NextResponse.json({ ...doc, _id: String((doc as any)._id), images, options, image })
+      const numericId = parseInt(id)
+      if (isNaN(numericId)) {
+        return NextResponse.json(null, { status: 404 })
       }
+
+      const product = await prisma.product.findUnique({
+        where: { id: numericId },
+        include: {
+          seller: true,
+          options: {
+            include: {
+              values: true
+            }
+          }
+        }
+      })
+
+      if (!product) return NextResponse.json(null, { status: 404 })
+
+      return NextResponse.json({
+        _id: product.id,
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        description: product.description,
+        image: product.image,
+        images: product.images ? (Array.isArray(product.images) ? product.images : [product.images]) : [],
+        category: product.category,
+        username: product.sellerUsername,
+        seller: product.seller?.username,
+        options: product.options || [],
+        rating: product.rating,
+        sold: product.sold,
+        stock: product.stock
+      })
     }
 
     // GET by username
     if (username) {
-      const items = await db.collection('seller_products').find({ username }).toArray()
-      const res = items.map((i: any) => {
-        const images = Array.isArray(i.images) ? i.images : (i.image ? [i.image] : [])
-        return ({
-          ...i,
-          _id: String(i._id),
-          images,
-          image: images.length ? images[0] : (i.image || ''),
-          options: Array.isArray(i.options) ? i.options : []
-        })
+      const products = await prisma.product.findMany({
+        where: { sellerUsername: username },
+        include: {
+          seller: true,
+          options: {
+            include: {
+              values: true
+            }
+          }
+        }
       })
-      return NextResponse.json(res)
+
+      const result = products.map(product => ({
+        _id: product.id,
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        description: product.description,
+        image: product.image,
+        images: product.images ? (Array.isArray(product.images) ? product.images : [product.images]) : [],
+        category: product.category,
+        username: product.sellerUsername,
+        seller: product.seller?.username,
+        options: product.options || [],
+        rating: product.rating,
+        sold: product.sold,
+        stock: product.stock
+      }))
+
+      return NextResponse.json(result)
     }
 
-    // no filters -> return all seller products
-    const all = await db.collection('seller_products').find({}).toArray()
-    const resAll = all.map((i: any) => {
-      const images = Array.isArray(i.images) ? i.images : (i.image ? [i.image] : [])
-      return ({
-        ...i,
-        _id: String(i._id),
-        images,
-        image: images.length ? images[0] : (i.image || ''),
-        options: Array.isArray(i.options) ? i.options : []
-      })
+    // no filters -> return all seller products (products that have sellers)
+    const allProducts = await prisma.product.findMany({
+      where: {
+        NOT: { sellerUsername: null }
+      },
+      include: {
+        seller: true,
+        options: {
+          include: {
+            values: true
+          }
+        }
+      }
     })
-    return NextResponse.json(resAll)
+
+    const resultAll = allProducts.map(product => ({
+      _id: product.id,
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      description: product.description,
+      image: product.image,
+      images: product.images ? (Array.isArray(product.images) ? product.images : [product.images]) : [],
+      category: product.category,
+      username: product.sellerUsername,
+      seller: product.seller?.username,
+      options: product.options || [],
+      rating: product.rating,
+      sold: product.sold,
+      stock: product.stock
+    }))
+
+    return NextResponse.json(resultAll)
   } catch (err) {
     console.error('GET /api/seller-products error', err)
     return NextResponse.json({ error: 'internal error' }, { status: 500 })
@@ -90,24 +140,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 })
     }
 
-  const doc = {
-      username: body.username,
+    // Check if seller exists
+    const seller = await prisma.seller.findUnique({
+      where: { username: body.username }
+    })
+
+    const productData = {
       name: body.item.name,
-      price: typeof body.item.price === 'string' ?
-        (Number(body.item.price) || body.item.price) :
-        body.item.price,
-      desc: body.item.desc || '',
-  images: Array.isArray(body.item.images) ? body.item.images : (body.item.image ? [body.item.image] : []),
-  image: Array.isArray(body.item.images) && body.item.images.length ? body.item.images[0] : (body.item.image || ''),
-      options: Array.isArray(body.item.options) ? body.item.options : [],
-      createdAt: new Date()
+      price: typeof body.item.price === 'string' ? 
+        (Number(body.item.price) || 0) : 
+        Number(body.item.price) || 0,
+      description: body.item.desc || '',
+      image: Array.isArray(body.item.images) && body.item.images.length ? 
+        body.item.images[0] : 
+        (body.item.image || ''),
+      images: Array.isArray(body.item.images) ? body.item.images : 
+        (body.item.image ? [body.item.image] : []),
+      sellerUsername: body.username,
+      sellerId: seller?.id || null,
+      stock: 999 // default stock
     }
 
-  const client = await clientPromise
-  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
-  const db = (client as any).db()
-    const r = await db.collection('seller_products').insertOne(doc)
-    return NextResponse.json({ ok: true, id: String(r.insertedId) })
+    const newProduct = await prisma.product.create({
+      data: productData
+    })
+
+    return NextResponse.json({ ok: true, id: newProduct.id })
   } catch (err) {
     console.error('POST /api/seller-products error', err)
     return NextResponse.json({ error: 'internal error' }, { status: 500 })
@@ -124,39 +182,33 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 })
     }
 
-    const client = await clientPromise
-    if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
-    const db = (client as any).db()
-    
-    // Convert productId to ObjectId if it's a valid ObjectId string
-    let filter: any
-    try {
-      if (ObjectId.isValid(productId)) {
-        filter = { _id: new ObjectId(productId), username }
-      } else {
-        filter = { _id: productId, username }
-      }
-    } catch {
-      filter = { _id: productId, username }
+    const numericId = parseInt(productId)
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'invalid product id' }, { status: 400 })
     }
 
-    const updateDoc = {
+    const updateData = {
       name: item.name,
-      price: typeof item.price === 'string' ? (Number(item.price) || item.price) : item.price,
+      price: typeof item.price === 'string' ? 
+        (Number(item.price) || 0) : 
+        Number(item.price) || 0,
       category: item.category || '',
       description: item.desc || '',
-      desc: item.desc || '',
-      options: Array.isArray(item.options) ? item.options : [],
-      updatedAt: new Date()
     }
 
-    const result = await db.collection('seller_products').updateOne(filter, { $set: updateDoc })
+    const result = await prisma.product.updateMany({
+      where: {
+        id: numericId,
+        sellerUsername: username
+      },
+      data: updateData
+    })
     
-    if (result.matchedCount === 0) {
+    if (result.count === 0) {
       return NextResponse.json({ error: 'product not found or unauthorized' }, { status: 404 })
     }
 
-    return NextResponse.json({ ok: true, modified: result.modifiedCount })
+    return NextResponse.json({ ok: true, modified: result.count })
   } catch (err) {
     console.error('PUT /api/seller-products error', err)
     return NextResponse.json({ error: 'internal error' }, { status: 500 })
@@ -170,17 +222,19 @@ export async function DELETE(req: Request) {
     const id = url.searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  const client = await clientPromise
-  if (!client) return NextResponse.json({ error: 'database not configured' }, { status: 500 })
-  const db = (client as any).db()
-    if (!ObjectId.isValid(id)) {
+    const numericId = parseInt(id)
+    if (isNaN(numericId)) {
       return NextResponse.json({ error: 'invalid id' }, { status: 400 })
     }
-    const _id = new ObjectId(id)
-    await db.collection('seller_products').deleteOne({ _id })
+
+    await prisma.product.delete({
+      where: { id: numericId }
+    })
+
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/seller-products error', err)
-    return NextResponse.json({ error: 'internal error' }, { status: 500 })
+    // Return error details during development to aid debugging
+    return NextResponse.json({ error: 'internal error', message: (err as any)?.message, stack: (err as any)?.stack }, { status: 500 })
   }
 }

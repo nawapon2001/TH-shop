@@ -1,68 +1,31 @@
-import { connectToDatabase } from '@/lib/mongodb'
-import Product from '@/models/Product'
+import prisma from '@/lib/prisma'
 import { NextResponse } from 'next/server'
-import mongoose from 'mongoose'
 
-type ProductOption = { name: string; values: string[] }
-const ensureString = (v: unknown) => (v == null ? '' : String(v).trim())
-
-function normalizeOptions(raw: any): any[] {
-  if (Array.isArray(raw) && raw.every(o => typeof o === 'object' && Array.isArray(o?.values))) {
-    return (raw as any[]).map(o => ({
-      name: ensureString(o.name),
-      values: (o.values || []).map((v: any) => {
-        // รองรับทั้งแบบเก่า (string) และแบบใหม่ (object)
-        if (typeof v === 'string') {
-          return { value: ensureString(v), price: 0, priceType: 'add' }
-        } else if (typeof v === 'object' && v !== null && v.value) {
-          return {
-            value: ensureString(v.value),
-            price: v.price || 0,
-            priceType: v.priceType || 'add'
-          }
-        }
-        return { value: ensureString(v), price: 0, priceType: 'add' }
-      }).filter((v: any) => v.value)
-    })).filter(o => o.name && o.values.length)
-  }
-  if (Array.isArray(raw) && raw.every(v => typeof v === 'string' || typeof v === 'number')) {
-    const values = (raw as Array<string|number>).map(v => ({
-      value: ensureString(v),
-      price: 0,
-      priceType: 'add'
-    })).filter(v => v.value)
-    return values.length ? [{ name: 'ตัวเลือก', values }] : []
-  }
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    return Object.entries(raw).map(([k, vals]) => ({
-      name: ensureString(k),
-      values: Array.isArray(vals) ? (vals as any[]).map((v: any) => {
-        if (typeof v === 'string') {
-          return { value: ensureString(v), price: 0, priceType: 'add' }
-        } else if (typeof v === 'object' && v !== null && v.value) {
-          return {
-            value: ensureString(v.value),
-            price: v.price || 0,
-            priceType: v.priceType || 'add'
-          }
-        }
-        return { value: ensureString(v), price: 0, priceType: 'add' }
-      }).filter((v: any) => v.value) : []
-    })).filter(o => o.name && o.values.length)
-  }
-  return []
+function normalizeOptions(options: any): any[] {
+  if (!options || !Array.isArray(options)) return []
+  
+  return options.map((option: any) => ({
+    name: option.name || '',
+    values: (option.values || []).map((value: any) => ({
+      value: value.value || '',
+      price: value.price || 0,
+      priceType: value.priceType || 'add'
+    }))
+  })).filter(o => o.name && o.values.length > 0)
 }
 
 export async function DELETE(_req: Request, { params }: any) {
   try {
-    const { id } = params
-    await connectToDatabase()
-
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    const { id } = await params
+    
+    // only accept numeric ids (Prisma Product.id is an Int)
+    const numericId = Number(id)
+    if (!id || !/^[0-9]+$/.test(String(id)) || Number.isNaN(numericId)) {
       return NextResponse.json({ message: 'id ไม่ถูกต้อง' }, { status: 400 })
     }
 
-    const deleted = await Product.findByIdAndDelete(id)
+    const deleted = await prisma.product.delete({ where: { id: Number(id) } })
+
     if (!deleted) return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
     return NextResponse.json({ message: 'ลบสินค้าสำเร็จ' })
   } catch (error) {
@@ -73,18 +36,34 @@ export async function DELETE(_req: Request, { params }: any) {
 
 export async function GET(_req: Request, { params }: any) {
   try {
-    await connectToDatabase()
-    const { id } = params
-
-    if (!id) return NextResponse.json({ message: 'กรุณาระบุ id' }, { status: 400 })
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    const { id } = await params
+    // Product model uses numeric id. Validate that the incoming param is digits-only.
+    if (!id || !/^[0-9]+$/.test(String(id))) {
       return NextResponse.json({ message: 'id ไม่ถูกต้อง' }, { status: 400 })
     }
 
-  const product = (await Product.findById(id).lean()) as any
-  if (!product) return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
+    const numericId = Number(id)
 
-  return NextResponse.json({ ...product, options: normalizeOptions(product.options) })
+    const product = await prisma.product.findUnique({
+      where: { id: numericId },
+      include: {
+        seller: true,
+        options: {
+          include: {
+            values: true
+          }
+        }
+      }
+    })
+
+    if (!product) return NextResponse.json({ message: 'ไม่พบสินค้า' }, { status: 404 })
+
+    // normalize options and expose a string _id so frontend code can use either _id or id
+    return NextResponse.json({
+      ...product,
+      _id: String(product.id),
+      options: normalizeOptions(product.options)
+    })
   } catch (error) {
     console.error('GET product error:', error)
     return NextResponse.json({ message: 'เกิดข้อผิดพลาด' }, { status: 500 })

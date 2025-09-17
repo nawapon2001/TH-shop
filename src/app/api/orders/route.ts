@@ -1,312 +1,267 @@
 import { NextRequest, NextResponse } from 'next/server'
-import mongoose from 'mongoose'
-import Order from '@/models/Order'
-import { connectToDatabase } from '@/lib/mongodb'
+import prisma from '@/lib/prisma'
+import fs from 'fs/promises'
+import path from 'path'
 
 export const dynamic = 'force-dynamic'
 
 // GET /api/orders[?id=...]
 export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase()
     const id = req.nextUrl.searchParams.get('id')
-<<<<<<< Updated upstream
-  const seller = req.nextUrl.searchParams.get('seller')
-=======
     const seller = req.nextUrl.searchParams.get('seller')
     const customerEmail = req.nextUrl.searchParams.get('customerEmail')
     const customerName = req.nextUrl.searchParams.get('customerName')
->>>>>>> Stashed changes
 
     if (id) {
-      if (!mongoose.isValidObjectId(id)) {
+      const numericId = parseInt(id)
+      if (isNaN(numericId)) {
         return NextResponse.json({ message: 'invalid id' }, { status: 400 })
       }
-      const doc = await Order.findById(id).lean()
-      if (!doc) return NextResponse.json({ message: 'Order not found' }, { status: 404 })
-      return NextResponse.json(doc, { headers: { 'Cache-Control': 'no-store' } })
+      
+      const order = await prisma.order.findUnique({
+        where: { id: numericId },
+        include: {
+          messages: true
+        }
+      })
+      
+      if (!order) return NextResponse.json({ message: 'Order not found' }, { status: 404 })
+      // normalize to include _id string for frontend and flatten customerInfo
+      const customerInfo = order.customerInfo as any || {}
+      const shippingNumber = (order.shippingInfo as any)?.trackingNumber || (order as any).shippingNumber || ''
+      const resp = { 
+        ...order, 
+        _id: String(order.id),
+        name: customerInfo.name || '',
+        phone: customerInfo.phone || '', 
+        email: customerInfo.email || '',
+        address: customerInfo.address || '',
+        shippingNumber,
+        shippingInfo: order.shippingInfo || null
+      }
+      return NextResponse.json(resp, { headers: { 'Cache-Control': 'no-store' } })
     }
 
-<<<<<<< Updated upstream
-    // ถ้าระบุ seller ให้คืนเฉพาะคำสั่งซื้อที่มี item.seller เท่ากับค่านั้น
-=======
-    // สร้าง where clause สำหรับการกรองข้อมูล
-    let whereClause: any = {}
+  // Build where clause for filtering
+  const whereClause: any = {}
     
->>>>>>> Stashed changes
     if (seller) {
-      try {
-        // find orders where at least one item.seller matches OR item.productId belongs to seller's products
-        // first get seller product ids from the raw MongoDB collection (stringified)
-        const db = (mongoose.connection && (mongoose.connection as any).db) || null
-        let sellerProductIds: string[] = []
-        if (db) {
-          const sp = await db.collection('seller_products').find({ username: seller }).toArray()
-          sellerProductIds = sp.map((s: any) => String(s._id))
-        }
-
-        const query: any = {
-          $or: [
-            { 'items.seller': seller }
-          ]
-        }
-        if (sellerProductIds.length) query.$or.push({ 'items.productId': { $in: sellerProductIds } })
-
-        const docs = await Order.find(query).sort({ createdAt: -1 }).lean()
-        return NextResponse.json(docs, { headers: { 'Cache-Control': 'no-store' } })
-      } catch (err) {
-        console.error('GET /api/orders?seller error', err)
-        // fallback to simple seller match
-        const docs = await Order.find({ 'items.seller': seller }).sort({ createdAt: -1 }).lean()
-        return NextResponse.json(docs, { headers: { 'Cache-Control': 'no-store' } })
-      }
-    } else if (customerEmail || customerName) {
-      // กรองตาม customer email หรือ name ใน customerInfo
-      const customerFilters = []
-      
-      if (customerEmail) {
-        customerFilters.push({
-          customerInfo: {
-            path: '$.email',
-            string_contains: customerEmail
-          }
-        })
-        // เพิ่มการค้นหาแบบ exact match ด้วย
-        customerFilters.push({
-          customerInfo: {
-            path: '$.email',
-            equals: customerEmail
-          }
-        })
-      }
-      
-      if (customerName) {
-        customerFilters.push({
-          customerInfo: {
-            path: '$.name',
-            string_contains: customerName
-          }
-        })
-        // เพิ่มการค้นหาแบบ exact match ด้วย
-        customerFilters.push({
-          customerInfo: {
-            path: '$.name',
-            equals: customerName
-          }
-        })
-      }
-      
-      whereClause = {
-        OR: customerFilters
+      // Filter orders that contain items from this seller
+      whereClause.items = {
+        path: '$[*].seller',
+        equals: seller
       }
     }
 
-<<<<<<< Updated upstream
-    // ทั้งหมด (ใหม่ -> เก่า)
-    const docs = await Order.find().sort({ createdAt: -1 }).lean()
-    return NextResponse.json(docs, { headers: { 'Cache-Control': 'no-store' } })
-  } catch (e) {
-    return NextResponse.json({ message: 'GET error' }, { status: 500 })
-=======
-    console.log('🔍 Orders API - Filter params:', {
-      seller,
-      customerEmail,
-      customerName,
-      whereClause
-    })
+    if (customerEmail) {
+      whereClause.customerInfo = {
+        path: '$.email',
+        equals: customerEmail
+      }
+    }
+
+    if (customerName) {
+      whereClause.customerInfo = {
+        path: '$.name',
+        string_contains: customerName
+      }
+    }
 
     const orders = await prisma.order.findMany({
       where: whereClause,
-      orderBy: {
-        createdAt: 'desc'
-      }
+      include: {
+        messages: true
+      },
+      orderBy: { createdAt: 'desc' }
     })
 
-    console.log(`📦 Orders API - Found ${orders.length} orders`)
-
-    // Transform to match frontend expectations
-    const transformedOrders = orders.map(order => ({
-      _id: order.id.toString(),
-      ...order
-    }))
-
-    return NextResponse.json(transformedOrders, { headers: { 'Cache-Control': 'no-store' } })
-  } catch (error) {
-    console.error('Error fetching orders:', error)
-    return NextResponse.json({ 
-      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลคำสั่งซื้อ',
-      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
-    }, { status: 500 })
->>>>>>> Stashed changes
+    const transformed = (orders || []).map(o => {
+      const customerInfo = o.customerInfo as any || {}
+      const shippingNumber = (o.shippingInfo as any)?.trackingNumber || (o as any).shippingNumber || ''
+      return {
+        ...o, 
+        _id: String(o.id),
+        name: customerInfo.name || '',
+        phone: customerInfo.phone || '', 
+        email: customerInfo.email || '',
+        address: customerInfo.address || '',
+        shippingNumber,
+        shippingInfo: o.shippingInfo || null
+      }
+    })
+    return NextResponse.json(transformed, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (err) {
+    console.error('GET /api/orders error', err)
+    return NextResponse.json({ message: 'internal error' }, { status: 500 })
   }
 }
 
-// POST /api/orders  (ถ้าคุณต้องการ endpoint สร้างออเดอร์)
+// POST /api/orders
 export async function POST(req: NextRequest) {
   try {
-<<<<<<< Updated upstream
-    await connectToDatabase()
-    // Support both JSON and multipart FormData (transfer + slip)
-    let body: any = {}
     const contentType = req.headers.get('content-type') || ''
+    let data: any = {}
+
     if (contentType.includes('multipart/form-data')) {
-      // NextRequest doesn't parse multipart automatically here; the client encodes a field 'order' as JSON
+      // parse FormData: client sends a field 'order' containing JSON and optional 'slip' file
       const form = await req.formData()
       const orderRaw = form.get('order')
       try {
-        body = typeof orderRaw === 'string' ? JSON.parse(orderRaw) : JSON.parse(String(orderRaw))
-      } catch (e) {
-        body = {}
+        data = typeof orderRaw === 'string' ? JSON.parse(orderRaw) : JSON.parse(String(orderRaw))
+      } catch {
+        data = {}
       }
-      // also allow explicit 'sellers' form field
+
       const sellersField = form.get('sellers')
       if (sellersField) {
         try {
-          body.sellers = typeof sellersField === 'string' ? JSON.parse(sellersField) : JSON.parse(String(sellersField))
-        } catch (e) {
-          // ignore parse error
-=======
-    const data = await req.json()
-    
-    // Debug logging
-    console.log('🛒 Orders API - Received data:', {
-      totalAmount: data.totalAmount,
-      totalAmountType: typeof data.totalAmount,
-      customerInfo: data.customerInfo,
-      name: data.name,
-      phone: data.phone,
-      items: data.items
-    })
+          data.sellers = typeof sellersField === 'string' ? JSON.parse(sellersField) : JSON.parse(String(sellersField))
+        } catch {
+          /* ignore parse error */
+        }
+      }
 
-    // Auto-generate orderNumber if not provided
-    let orderNumber = data.orderNumber?.trim()
-    if (!orderNumber) {
-      // Generate unique order number: ORD-YYYYMMDD-HHMMSS-RAND
-      const now = new Date()
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
-      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
-      const randStr = Math.random().toString(36).substr(2, 4).toUpperCase()
-      orderNumber = `ORD-${dateStr}-${timeStr}-${randStr}`
-    }
-
-    // Validate and convert totalAmount - support both old and new format
-    let totalAmount = data.totalAmount
-    
-    // If totalAmount not provided but amounts.total exists (new format)
-    if (!totalAmount && data.amounts?.total) {
-      totalAmount = data.amounts.total
-    }
-    
-    // Convert to number if string
-    if (typeof totalAmount === 'string') {
-      totalAmount = parseFloat(totalAmount)
-    }
-
-    if (!totalAmount || totalAmount <= 0 || isNaN(totalAmount)) {
-      return NextResponse.json({ 
-        message: 'กรุณาระบุยอดรวมที่ถูกต้อง',
-        debug: {
-          receivedTotalAmount: data.totalAmount,
-          receivedAmounts: data.amounts,
-          finalTotalAmount: totalAmount,
-          type: typeof totalAmount
->>>>>>> Stashed changes
+      const slip = form.get('slip') as any
+      if (slip && slip.size) {
+        try {
+          const arr = await slip.arrayBuffer()
+          const buf = Buffer.from(arr)
+          const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
+          await fs.mkdir(uploadsDir, { recursive: true })
+          const safeName = (slip.name || 'slip').replace(/[^a-zA-Z0-9._-]/g, '_')
+          const filename = `${Date.now()}-${safeName}`
+          const filePath = path.join(uploadsDir, filename)
+          await fs.writeFile(filePath, buf)
+          const slipUrl = `/uploads/${filename}`
+          data.shippingInfo = data.shippingInfo || {}
+          data.shippingInfo.slip = { filename, url: slipUrl, size: slip.size }
+        } catch (err) {
+          console.error('Failed to save slip file', err)
         }
       }
     } else {
-      body = await req.json()
+      data = await req.json()
     }
 
-<<<<<<< Updated upstream
-    const { name, address, phone, items = [], payment, delivery, amounts, sellers } = body || {}
-    if (!name || !address || !phone || !Array.isArray(items)) {
-      return NextResponse.json({ message: 'invalid payload' }, { status: 400 })
-    }
-    // normalize items: allow incoming items that may include extra fields (productId, seller)
-    const normalizedItems = items.map((it: any) => ({
-      name: it.name,
-      price: Number(it.price) || 0,
-      image: it.image || it.images?.[0] || '',
-      qty: Number(it.qty || it.quantity || 1) || 1,
-      productId: it._id || it.productId || undefined,
-      seller: it.seller || undefined,
-    }))
+    // Normalize incoming payload to ensure customerInfo exists and is complete
+    let { customerInfo, totalAmount } = data || {}
+    const { shippingInfo, items } = data || {}
 
-    // Build order payload to save. Persist sellers map when provided.
-    const toSave: any = { name, address, phone, items: normalizedItems, payment, delivery, amounts }
-    if (sellers && typeof sellers === 'object' && Object.keys(sellers).length) {
-      toSave.sellers = sellers
-=======
-    // If customerInfo exists but missing name/phone, try to get from top-level fields
-    if (customerInfo) {
-      if (!customerInfo.name && data.name) {
-        customerInfo.name = data.name
+    // Some clients send top-level fields (name, phone, address, email) instead of or in addition to customerInfo
+    // Ensure customerInfo has all required fields, falling back to top-level fields
+    const name = customerInfo?.name || data?.name || data?.customerName || data?.customer?.name
+    const phone = customerInfo?.phone || data?.phone || data?.tel || data?.customer?.phone
+    const address = customerInfo?.address || data?.address || data?.addr || data?.customer?.address
+    const email = customerInfo?.email || data?.email || data?.userEmail || data?.customer?.email
+
+    // Always construct a complete customerInfo object
+    customerInfo = { 
+      name: name || '', 
+      phone: phone || '', 
+      address: address || '', 
+      email: email || '' 
+    }    // If amounts.total present, use it as totalAmount
+    if ((!totalAmount || Number.isNaN(Number(totalAmount))) && data?.amounts?.total) {
+      const t = data.amounts.total
+      totalAmount = typeof t === 'string' ? parseFloat(t) : Number(t)
+    }
+
+    if (!customerInfo || !items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ message: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Generate order number
+    const orderNumber = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber,
+        totalAmount: parseFloat(totalAmount) || 0,
+        status: 'pending',
+        customerInfo,
+        shippingInfo: shippingInfo || null,
+        items
       }
-      if (!customerInfo.phone && data.phone) {
-        customerInfo.phone = data.phone
-      }
-    }
+    })
 
-    if (!customerInfo || !customerInfo.name || !customerInfo.phone) {
-      return NextResponse.json({ message: 'กรุณาระบุข้อมูลลูกค้า (ชื่อ และ เบอร์โทร)' }, { status: 400 })
->>>>>>> Stashed changes
-    }
-
-    // Optional: log incoming order payload in development for debugging
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        console.debug('[api/orders] incoming order payload preview:', { name, address, phone, items: normalizedItems.slice(0,5), sellers: sellers ? Object.keys(sellers) : undefined })
-      } catch (e) { /* ignore */ }
-    }
-
-    const doc = await Order.create(toSave)
-    return NextResponse.json(doc, { status: 201 })
-  } catch (e) {
-    return NextResponse.json({ message: 'POST error' }, { status: 500 })
+    // return created order id as _id for frontend
+    return NextResponse.json({ 
+      message: 'Order created successfully', 
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      _id: String(order.id) 
+    })
+  } catch (err) {
+    console.error('POST /api/orders error', err)
+    return NextResponse.json({ message: 'Failed to create order', error: String(err) }, { status: 500 })
   }
 }
 
-// PATCH /api/orders  { id, status? , shippingNumber? }
-export async function PATCH(req: NextRequest) {
+// PUT /api/orders - update order status
+export async function PUT(req: NextRequest) {
   try {
-    await connectToDatabase()
-    const { id, status, shippingNumber } = await req.json()
+    const body = await req.json()
+    const { id, status, trackingNumber, shippingNumber } = body
 
-    if (!id || !mongoose.isValidObjectId(id)) {
-      return NextResponse.json({ message: 'invalid id' }, { status: 400 })
+    if (!id || (!status && !trackingNumber && !shippingNumber)) {
+      return NextResponse.json({ message: 'Missing id or update data' }, { status: 400 })
     }
 
-    const update: any = { updatedAt: new Date() }
-    if (typeof status === 'string') update.status = status
-    if (typeof shippingNumber === 'string') update.shippingNumber = shippingNumber
-
-    if (!('status' in update) && !('shippingNumber' in update)) {
-      return NextResponse.json({ message: 'nothing to update' }, { status: 400 })
+    const numericId = parseInt(id)
+    if (isNaN(numericId)) {
+      return NextResponse.json({ message: 'Invalid id' }, { status: 400 })
     }
 
-    const doc = await Order.findByIdAndUpdate(id, { $set: update }, { new: true })
-    if (!doc) return NextResponse.json({ message: 'Order not found' }, { status: 404 })
+    const updateData: any = {}
+    
+    if (status) {
+      updateData.status = status
+    }
+    
+    if (trackingNumber || shippingNumber) {
+      updateData.shippingInfo = {
+        trackingNumber: trackingNumber || shippingNumber
+      }
+    }
 
-    return NextResponse.json({ ok: true })
-  } catch (e) {
-    return NextResponse.json({ message: 'PATCH error' }, { status: 500 })
+    const order = await prisma.order.update({
+      where: { id: numericId },
+      data: updateData
+    })
+
+    return NextResponse.json({ message: 'Order updated successfully', order })
+  } catch (err) {
+    console.error('PUT /api/orders error', err)
+    return NextResponse.json({ message: 'Failed to update order' }, { status: 500 })
   }
 }
 
-// DELETE /api/orders?id=...
+// PATCH /api/orders - same as PUT for order status updates
+export async function PATCH(req: NextRequest) {
+  return PUT(req)
+}
+
+// DELETE /api/orders
 export async function DELETE(req: NextRequest) {
   try {
-    await connectToDatabase()
     const id = req.nextUrl.searchParams.get('id')
-    if (!id || !mongoose.isValidObjectId(id)) {
-      return NextResponse.json({ message: 'invalid id' }, { status: 400 })
+    if (!id) {
+      return NextResponse.json({ message: 'Missing id' }, { status: 400 })
     }
-    const res = await Order.deleteOne({ _id: id })
-    if (res.deletedCount === 0) {
-      return NextResponse.json({ message: 'Order not found' }, { status: 404 })
+
+    const numericId = parseInt(id)
+    if (isNaN(numericId)) {
+      return NextResponse.json({ message: 'Invalid id' }, { status: 400 })
     }
-    return NextResponse.json({ ok: true })
-  } catch (e) {
-    return NextResponse.json({ message: 'DELETE error' }, { status: 500 })
+
+    await prisma.order.delete({
+      where: { id: numericId }
+    })
+
+    return NextResponse.json({ message: 'Order deleted successfully' })
+  } catch (err) {
+    console.error('DELETE /api/orders error', err)
+    return NextResponse.json({ message: 'Failed to delete order' }, { status: 500 })
   }
 }

@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
+import { safeProductHref } from '@/lib/product-utils'
 import { CartManager } from '@/lib/cart-utils'
 import { requireAuthentication } from '@/lib/auth-utils'
 import Banner from '@/components/Banner'
@@ -1031,7 +1032,7 @@ function ProductPageInner() {
             >
               {filtered.map((product, index) => (
                 <motion.div
-                  key={product._id}
+                  key={`${product._id || 'product'}-${index}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
@@ -1040,7 +1041,7 @@ function ProductPageInner() {
                     product={product}
                     inCart={!!cart.find((p) => p._id === product._id)}
                     onAddToCart={addToCart}
-                    onClick={() => router.push(`/product/${product._id}`)}
+                    onClick={() => router.push(safeProductHref(product))}
                   />
                 </motion.div>
               ))}

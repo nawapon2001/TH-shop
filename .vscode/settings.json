@@ -1,0 +1,34 @@
+{
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "176.9.86.61",
+            "port": 3306,
+            "driver": "MySQL",
+            "database": "apppri14_signshop",
+            "username": "apppri14_signshop",
+            "password": "mJJJcFKf7NVZsTvhmMcG",
+            "name": "pay"
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "th-thai.shop",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "TH-Thai",
+            "database": "ththaish_Data",
+            "username": "ththaish_Data",
+            "password": "Ninja1314"
+        }
+    ]
+}

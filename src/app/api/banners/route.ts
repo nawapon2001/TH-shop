@@ -2,8 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs/promises'
-import { connectToDatabase } from '@/lib/mongodb'
-import Banner from '@/models/Banner'
+import prisma from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,18 +45,16 @@ export async function POST(req: NextRequest) {
 
   // เก็บ DB (best-effort)
   try {
-    await connectToDatabase()
-    await Banner.create({
-      filename,
-      image: buffer,            // ถ้าสคีมามี Buffer ก็เก็บได้
-      contentType: file.type,
-      url: record.url,
-      isSmall,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    await prisma.banner.create({
+      data: {
+        filename,
+        contentType: file.type,
+        url: record.url,
+        isSmall,
+      }
     })
   } catch (err) {
-    console.error('MongoDB banner insert error:', err)
+    console.error('Prisma banner insert error:', err)
   }
 
   return NextResponse.json(record)
@@ -66,14 +63,21 @@ export async function POST(req: NextRequest) {
 // GET /api/banners -> [{ _id, url, image, isSmall }]
 export async function GET() {
   try {
-    await connectToDatabase()
-    const docs = await Banner.find({}, { filename: 1, url: 1, isSmall: 1 }).sort({ createdAt: 1 }).lean()
+    const docs = await prisma.banner.findMany({
+      select: {
+        filename: true,
+        url: true,
+        isSmall: true
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+    
     if (docs?.length) {
       return NextResponse.json(
-        docs.map((d: any) => ({
-          _id: d.filename || String(d._id),
-          url: d.url || (d.filename ? `/banners/${d.filename}` : ''),
-          image: d.url || (d.filename ? `/banners/${d.filename}` : ''),
+        docs.map((d) => ({
+          _id: d.filename,
+          url: d.url,
+          image: d.url,
           isSmall: !!d.isSmall,
         }))
       )
@@ -105,10 +109,11 @@ export async function DELETE(req: NextRequest) {
   try { await fs.unlink(filePath) } catch {}
 
   try {
-    await connectToDatabase()
-    await Banner.deleteOne({ $or: [{ filename }, { _id: filename }] })
+    // Use deleteMany to avoid failing when filename isn't unique or when DB record is missing
+    await prisma.banner.deleteMany({ where: { filename } })
   } catch (err) {
-    console.error('MongoDB banner delete error:', err)
+    console.error('Prisma banner delete error:', err)
+    return NextResponse.json({ error: 'internal error', message: (err as any)?.message, stack: (err as any)?.stack }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

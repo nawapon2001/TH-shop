@@ -37,6 +37,8 @@ export default function RegisterPage() {
     return score // 0-4
   }, [password])
 
+  const emailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email])
+
   const canSubmit =
     fullName.trim().length > 0 &&
     emailValid &&
@@ -326,8 +328,13 @@ function MemberTypePicker({
         <button
           type="button"
           onClick={() => onChange('ลูกค้าทั่วไป')}
-          aria-pressed={true}
-          className="h-10 rounded-xl border text-sm font-semibold inline-flex items-center justify-center gap-2 bg-orange-600 text-white border-orange-600 shadow"
+          aria-pressed={value === 'ลูกค้าทั่วไป'}
+          className={
+            'h-10 rounded-xl border text-sm font-semibold inline-flex items-center justify-center gap-2 ' +
+            (value === 'ลูกค้าทั่วไป'
+              ? 'bg-orange-600 text-white border-orange-600 shadow'
+              : 'bg-white text-orange-700 border-orange-200')
+          }
         >
           <User className="w-4 h-4" /> ลูกค้าทั่วไป
         </button>

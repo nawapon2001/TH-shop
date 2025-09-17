@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { safeProductHref } from '@/lib/product-utils'
 import Swal from 'sweetalert2'
 import { CartManager } from '@/lib/cart-utils'
 import { 
@@ -314,7 +315,7 @@ export default function SellerProductsPage() {
                       )}
                       <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Link
-                          href={`/product/${product._id}`}
+                          href={safeProductHref(product)}
                           className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-colors"
                         >
                           <Eye className="w-4 h-4 text-slate-600" />
@@ -399,7 +400,7 @@ export default function SellerProductsPage() {
                         </div>
                         <div className="flex gap-3">
                           <Link
-                            href={`/product/${product._id}`}
+                            href={safeProductHref(product)}
                             className="text-slate-600 hover:text-slate-800 p-2"
                             title="ดูสินค้า"
                           >
