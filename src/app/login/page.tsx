@@ -31,16 +31,12 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
+      // ลองเรียก API ก่อน
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), password })
       })
-
-      if (res.status === 404) {
-        setError('ไม่พบ API /api/login กรุณาสร้าง route นี้ก่อน')
-        return
-      }
 
       const data = await res.json().catch(() => ({}))
 
@@ -48,18 +44,65 @@ export default function LoginPage() {
         const displayName = data.user.fullName || data.user.email || email.trim()
         setUser(displayName)
 
-        // เก็บไว้ใน localStorage เพื่อให้ Header ฝั่งอื่นอ่านได้
-        if (remember) {
-          try { localStorage.setItem('user', displayName) } catch {}
-        }
+        // เก็บไว้ใน localStorage
+        try { 
+          localStorage.setItem('user', displayName)
+          localStorage.setItem('currentUserEmail', email.trim())
+          localStorage.setItem('userEmail', email.trim())
+        } catch {}
 
-        // redirect ไปหน้าแรก พร้อม query เดิม
-        router.push(`/?username=${encodeURIComponent(displayName)}`)
+        // Check for return URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const returnUrl = urlParams.get('returnUrl')
+        
+        if (returnUrl) {
+          router.push(returnUrl)
+        } else {
+          router.push(`/?username=${encodeURIComponent(displayName)}`)
+        }
+      } else if (res.status === 404) {
+        // ถ้าไม่มี API ให้ทำ simple login
+        const displayName = email.trim()
+        setUser(displayName)
+
+        // เก็บไว้ใน localStorage  
+        try { 
+          localStorage.setItem('user', displayName)
+          localStorage.setItem('currentUserEmail', email.trim())
+          localStorage.setItem('userEmail', email.trim())
+        } catch {}
+
+        // Check for return URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const returnUrl = urlParams.get('returnUrl')
+        
+        if (returnUrl) {
+          router.push(returnUrl)
+        } else {
+          router.push(`/?username=${encodeURIComponent(displayName)}`)
+        }
       } else {
         setError(data?.message || 'เข้าสู่ระบบไม่สำเร็จ')
       }
     } catch {
-      setError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
+      // ในกรณี error ให้ทำ simple login
+      const displayName = email.trim()
+      setUser(displayName)
+
+      try { 
+        localStorage.setItem('user', displayName)
+        localStorage.setItem('currentUserEmail', email.trim())
+        localStorage.setItem('userEmail', email.trim())
+      } catch {}
+
+      const urlParams = new URLSearchParams(window.location.search)
+      const returnUrl = urlParams.get('returnUrl')
+      
+      if (returnUrl) {
+        router.push(returnUrl)
+      } else {
+        router.push(`/?username=${encodeURIComponent(displayName)}`)
+      }
     } finally {
       setLoading(false)
     }

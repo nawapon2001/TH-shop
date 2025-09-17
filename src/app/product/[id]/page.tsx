@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Header from '@/components/Header'
 import ReactMarkdown from 'react-markdown'
 import { CartManager } from '@/lib/cart-utils'
+import { requireAuthentication } from '@/lib/auth-utils'
 import {
   ChevronLeft, ChevronRight, Star, Truck, ShieldCheck, Tag, Share2, Heart, X, Maximize2
 } from 'lucide-react'
@@ -335,6 +336,12 @@ export default function ProductDetailPage() {
       alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนเพิ่มเข้าตะกร้า')
       return
     }
+
+    // ตรวจสอบการ login ก่อน
+    if (!requireAuthentication('เพิ่มสินค้าลงตะกร้า')) {
+      return
+    }
+
     CartManager.addProduct({
       ...product,
       price: discountedPrice, // Use calculated price with options and discount
@@ -350,6 +357,12 @@ export default function ProductDetailPage() {
       alert('กรุณาเลือกตัวเลือกสินค้าให้ครบก่อนสั่งซื้อ')
       return
     }
+
+    // ตรวจสอบการ login ก่อน
+    if (!requireAuthentication('สั่งซื้อสินค้า')) {
+      return
+    }
+
     // Add to cart with calculated price first
     CartManager.addProduct({
       ...product,

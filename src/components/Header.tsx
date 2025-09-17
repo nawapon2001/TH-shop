@@ -134,7 +134,8 @@ export default function Header({ user }: { user?: string | null }) {
     }
   }
 
-  const hotKeywords = [
+  // default fallbacks in case API is unavailable
+  const defaultHotKeywords = [
     'iPhone 16',
     'เคสโทรศัพท์',
     'หูฟังไร้สาย',
@@ -142,7 +143,7 @@ export default function Header({ user }: { user?: string | null }) {
     'คีย์บอร์ดเกมมิ่ง',
   ]
 
-  const categories = [
+  const defaultCategories = [
     { name: 'มือถือ & แท็บเล็ต', href: '/c/mobile' },
     { name: 'คอมพิวเตอร์ & เกมมิ่ง', href: '/c/computer' },
     { name: 'แฟชั่นผู้หญิง', href: '/c/women' },
@@ -153,6 +154,56 @@ export default function Header({ user }: { user?: string | null }) {
     { name: 'อิเล็กทรอนิกส์', href: '/c/electronics' },
     { name: 'กีฬา & กลางแจ้ง', href: '/c/sport' },
   ]
+
+  const [hotKeywords, setHotKeywords] = React.useState<string[]>(defaultHotKeywords)
+  const [categories, setCategories] = React.useState<{ name: string; href: string }[]>(defaultCategories)
+
+  // Latest products names to show in the small quick-nav (replaces static promo tags)
+  const defaultQuickTags = ['ดีลพิเศษ', 'โค้ดส่วนลด', 'คูปองร้านค้า', 'ช้อปแบรนด์', 'ฟรีค่าจัดส่ง']
+  const [quickTags, setQuickTags] = React.useState<string[]>(defaultQuickTags)
+
+  // Fetch latest products to use their names as quick tags
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/products')
+        if (!res.ok) return
+        const data = await res.json().catch(() => null)
+        if (!mounted || !Array.isArray(data)) return
+        const names = data.filter(Boolean).map((p: any) => p.name).filter(Boolean).slice(0, 5)
+        if (names && names.length) setQuickTags(names)
+      } catch {
+        // ignore and keep defaults
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
+  // Fetch categories from API and derive hot keywords from returned categories
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/categories')
+        if (!res.ok) return
+        const data = await res.json().catch(() => null)
+        if (!mounted || !Array.isArray(data)) return
+        // Map api categories to { name, href }
+        const mapped = data.map((c: any) => ({
+          name: c.name || String(c),
+          href: `/c/${encodeURIComponent((c.name || '').toLowerCase().replace(/\s+/g, '-'))}`
+        }))
+        if (mapped.length) setCategories(mapped)
+        // Derive hot keywords from category names (take first 6) as a pragmatic approach
+        const keywords = mapped.slice(0, 6).map((c: any) => c.name).filter(Boolean)
+        if (keywords.length) setHotKeywords(keywords)
+      } catch {
+        // ignore and keep defaults
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
 
   const cartItems = React.useMemo(() => {
     try {
@@ -389,7 +440,7 @@ export default function Header({ user }: { user?: string | null }) {
               </div>
 
               <nav className="flex items-center gap-1 overflow-x-auto scrollbar-none">
-                {['ดีลพิเศษ', 'โค้ดส่วนลด', 'คูปองร้านค้า', 'ช้อปแบรนด์', 'ฟรีค่าจัดส่ง'].map((t) => (
+                {quickTags.map((t) => (
                   <Link key={t} href={`/tag/${encodeURIComponent(t)}`} className="px-3 h-9 rounded-full bg-white/0 hover:bg-white/15 grid place-items-center text-sm">
                     {t}
                   </Link>

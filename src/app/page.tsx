@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
 import { CartManager } from '@/lib/cart-utils'
+import { requireAuthentication } from '@/lib/auth-utils'
 import Banner from '@/components/Banner'
 import FullScreenBanner from '@/components/FullScreenBanner'
 import ProductRecommendations from '@/components/ProductRecommendations'
@@ -91,10 +92,7 @@ const getCategoryIcon = (category: Category) => {
     }
   }
   
-  // หากมีไอคอนที่อัปโหลดเอง ให้ใช้จากระบบเดิม
-  if (category.icon) {
-    return null // จะใช้ <img> ใน component แทน
-  }
+  // Ignore uploaded/icon URL - prefer system icons only
   
   // ใช้ระบบเดิมสำหรับหมวดหมู่ที่ไม่มีการกำหนดไอคอน
   const name = category.name.toLowerCase()
@@ -401,12 +399,7 @@ function CategoryMenu({
                   'w-12 h-12 rounded-xl flex items-center justify-center transition-all ' +
                   (active ? 'bg-white/20' : 'bg-gradient-to-br from-orange-50 to-red-50')
                 }>
-                  {cat.icon ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cat.icon} alt={cat.name} className="w-7 h-7 object-contain" />
-                  ) : (
-                    getCategoryIcon(cat)
-                  )}
+                  {getCategoryIcon(cat)}
                 </div>
                 <span className="text-xs font-semibold text-center leading-tight">{cat.name}</span>
               </motion.button>
@@ -854,6 +847,11 @@ function ProductPageInner() {
   }, [])
 
   const addToCart = (product: Product) => {
+    // ตรวจสอบการ login ก่อน
+    if (!requireAuthentication('เพิ่มสินค้าลงตะกร้า')) {
+      return
+    }
+
     try {
       CartManager.addProduct(product as any, 1)
       Swal.fire({ icon: 'success', title: 'เพิ่มสินค้าลงตะกร้าแล้ว', timer: 1200, showConfirmButton: false })

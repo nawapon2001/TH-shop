@@ -445,10 +445,14 @@ export default function AdminPage() {
   const [isAuth, setIsAuth] = useState(false)
   const [authError, setAuthError] = useState('')
 
-  // Update document title
+  // Update document title with logged-in user
   useEffect(() => {
-    document.title = 'ผู้ดูแลระบบ | TH-THAI SHOP'
-  }, [])
+    if (isAuth && adminUser) {
+      document.title = `ผู้ดูแลระบบ: ${adminUser} | TH-THAI SHOP`
+    } else {
+      document.title = 'ผู้ดูแลระบบ | TH-THAI SHOP'
+    }
+  }, [isAuth, adminUser])
 
   const DEFAULT_ADMINS: AdminCred[] = [{ username: 'nawapon1200', password: '055030376' }]
   const [adminUsers, setAdminUsers] = useState<AdminCred[]>(DEFAULT_ADMINS)
@@ -756,7 +760,7 @@ export default function AdminPage() {
 
   /* ---------- Category ops ---------- */
   const [category, setCategory] = useState('')
-  const [categoryIcon, setCategoryIcon] = useState<File | null>(null)
+  // category icons are chosen from built-in system icons only
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState('')
   const handleAddCategory = async (e: React.FormEvent) => {
@@ -766,22 +770,18 @@ export default function AdminPage() {
     const form = new FormData(); 
     form.append('name', category.trim()); 
     
-    // Add selected icon from system or uploaded file
+    // Add selected icon from system (uploads removed)
     if (selectedCategoryIcon) {
       form.append('iconType', 'system');
       form.append('iconName', selectedCategoryIcon);
-    } else if (categoryIcon) {
-      form.append('iconType', 'upload');
-      form.append('icon', categoryIcon);
     }
     
     try {
       const res = await fetch('/api/categories', { method: 'POST', body: form })
       if (!res.ok) { const err = await res.json().catch(()=>({})); setCategoryError(err?.message || 'เพิ่มหมวดหมู่ไม่สำเร็จ'); Swal.fire({ icon: 'error', title: 'เพิ่มหมวดหมู่ไม่สำเร็จ', text: err?.message || '' }) }
       else { 
-        setCategory(''); 
-        setCategoryIcon(null); 
-        setSelectedCategoryIcon(''); 
+  setCategory(''); 
+  setSelectedCategoryIcon(''); 
         setShowIconPicker(false);
         await fetchCategories(); 
         Swal.fire({ icon: 'success', title: 'เพิ่มหมวดหมู่สำเร็จ', timer: 1200, showConfirmButton: false }) 
@@ -856,7 +856,6 @@ export default function AdminPage() {
 
   /* ---------- Orders + chat ---------- */
   const [selectedOrderId, setSelectedOrderId] = useState<string|null>(null)
-  const selectedOrder = useMemo(()=> orders.find(o=>o._id===selectedOrderId), [orders, selectedOrderId])
 
   // chat popup state
   const [chatOpen, setChatOpen] = useState(false)
@@ -1019,7 +1018,7 @@ export default function AdminPage() {
                  </div>
                  <div>
                    <div className="text-base font-extrabold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">SignShop</div>
-                   <div className="text-xs text-slate-500 -mt-0.5">แดชบอร์ดผู้ดูแล</div>
+                   <div className="text-xs text-slate-500 -mt-0.5">ผู้ดูแล: {adminUser}</div>
                  </div>
                </div>
                <div className="flex items-center gap-2">
@@ -1029,6 +1028,13 @@ export default function AdminPage() {
                    className="group w-10 h-10 rounded-xl bg-white/80 border border-orange-200 text-orange-700 flex items-center justify-center hover:bg-orange-50 hover:shadow-lg transition-all duration-300 hover:scale-110"
                  >
                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />}
+                 </button>
+                 <button 
+                   onClick={() => setIsAuth(false)} 
+                   title="ออกจากระบบ" 
+                   className="group w-10 h-10 rounded-xl bg-white/80 border border-red-200 text-red-600 flex items-center justify-center hover:bg-red-50 hover:shadow-lg transition-all duration-300 hover:scale-110"
+                 >
+                   <LogIn className="w-4 h-4 rotate-180" />
                  </button>
                </div>
              </div>
@@ -1194,16 +1200,7 @@ export default function AdminPage() {
                        <ChevronDown className={`w-4 h-4 transition-transform ${showIconPicker ? 'rotate-180' : ''}`} />
                      </button>
                      
-                     <label className="flex items-center gap-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 cursor-pointer text-sm">
-                       <Upload className="w-4 h-4" />
-                       อัปโหลดไอคอนเอง
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         className="hidden" 
-                         onChange={e=>setCategoryIcon(e.target.files?.[0]||null)} 
-                       />
-                     </label>
+                    {/* Upload option removed - admin should use system icons only */}
                    </div>
                    
                    {/* Icon Picker Grid */}
@@ -1214,9 +1211,8 @@ export default function AdminPage() {
                            key={iconItem.name}
                            type="button"
                            onClick={() => {
-                             setSelectedCategoryIcon(iconItem.name)
-                             setShowIconPicker(false)
-                             setCategoryIcon(null) // Clear file upload when selecting icon
+                            setSelectedCategoryIcon(iconItem.name)
+                            setShowIconPicker(false)
                            }}
                            className={`p-3 rounded-lg border-2 hover:bg-orange-50 transition-colors ${
                              selectedCategoryIcon === iconItem.name 
@@ -1231,21 +1227,7 @@ export default function AdminPage() {
                      </div>
                    )}
                    
-                   {categoryIcon && (
-                     <div className="mt-3 p-3 bg-white rounded-lg border flex items-center gap-3">
-                       <Upload className="w-5 h-5 text-green-600" />
-                       <span className="text-sm text-slate-600">
-                         ไฟล์ที่เลือก: {categoryIcon.name}
-                       </span>
-                       <button 
-                         type="button" 
-                         onClick={() => setCategoryIcon(null)}
-                         className="ml-auto text-xs text-red-600 hover:text-red-800"
-                       >
-                         <X className="w-4 h-4" />
-                       </button>
-                     </div>
-                   )}
+                   {/* No uploaded icon preview (uploads disabled) */}
                  </div>
                  
                  <button 
@@ -1303,8 +1285,7 @@ export default function AdminPage() {
                          <div className="flex gap-2 flex-wrap">
                            {productFiles.map((file, idx)=>(
                              <div key={idx} className="relative w-20 h-20 rounded-md overflow-hidden border bg-white">
-                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                               <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                              <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
                                <button type="button" aria-label="ลบรูป" onClick={()=>setProductFiles(arr=>arr.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 grid place-items-center text-xs">×</button>
                              </div>
                            ))}
@@ -1340,8 +1321,7 @@ export default function AdminPage() {
                    <div className="rounded-xl border border-orange-100 bg-white p-4 shadow-sm">
                      <div className="h-48 rounded-md bg-orange-50 flex items-center justify-center overflow-hidden">
                        {productFiles.length ? (
-                         // eslint-disable-next-line @next/next/no-img-element
-                         <img src={URL.createObjectURL(productFiles[0])} alt="preview" className="h-full object-cover w-full" />
+                        <img src={URL.createObjectURL(productFiles[0])} alt="preview" className="h-full object-cover w-full" />
                        ) : (
                          <div className="text-center text-slate-400">
                            <div className="font-semibold">ไม่มีรูปตัวอย่าง</div>
@@ -1468,7 +1448,7 @@ export default function AdminPage() {
                     {sellersList.map(s => (
                       <div key={s.username || s._id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
                         <div className="flex items-center gap-3 flex-1">
-                          <div className="w-10 h-10 rounded overflow-hidden bg-orange-50 border">{s.image ? <img src={s.image} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-2" />}</div>
+                          <div className="w-10 h-10 rounded overflow-hidden bg-orange-50 border">{s.image ? <img src={s.image} alt={s.name||'item'} className="w-full h-full object-cover" /> : <Store className="w-6 h-6 text-orange-500 m-2" />}</div>
                           <div>
                             <div className="font-semibold">{s.shopName || s.username}</div>
                             <div className="text-xs text-slate-500">{s.username}</div>
@@ -1974,7 +1954,6 @@ function OrdersSection({
        ) : (
          <div className="space-y-6 mt-4">
            {filtered.map(o=>{
-             const total = orderTotal(o)
              const created = o.createdAt ? new Date(o.createdAt) : null
              return (
                <div key={o._id} onClick={()=>onSelect(o._id)} className={`rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer ${selectedId===o._id ? 'border-orange-400 ring-2 ring-orange-100' : 'border-orange-200'}`}>
