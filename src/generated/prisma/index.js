@@ -35,11 +35,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.16.1
+ * Prisma Client JS version: 6.16.2
  * Query Engine version: 1c57fdcd7e44b29b9313256c76699e91c3ac3c43
  */
 Prisma.prismaVersion = {
-  client: "6.16.1",
+  client: "6.16.2",
   engine: "1c57fdcd7e44b29b9313256c76699e91c3ac3c43"
 }
 
@@ -380,7 +380,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "D:\\ShopLL\\signshop-fullstack\\src\\generated\\prisma",
+      "value": "D:\\ShopLL\\TH-THAI\\src\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -410,15 +410,15 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "D:\\ShopLL\\signshop-fullstack\\prisma\\schema.prisma",
+    "sourceFilePath": "D:\\ShopLL\\TH-THAI\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": null,
+    "rootEnvPath": "../../../.env",
     "schemaEnvPath": "../../../.env"
   },
   "relativePath": "../../../prisma",
-  "clientVersion": "6.16.1",
+  "clientVersion": "6.16.2",
   "engineVersion": "1c57fdcd7e44b29b9313256c76699e91c3ac3c43",
   "datasourceNames": [
     "db"

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Header from '@/components/Header'
+import { safeProductHref } from '@/lib/product-utils'
 import Swal from 'sweetalert2'
 import { ShoppingCart, Store } from 'lucide-react'
 
@@ -96,7 +97,7 @@ export default function SellerStorefront() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {products.map((p: any) => (
-                <Link key={p._id} href={`/product/${p._id}`} className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-lg transition">
+                <Link key={p._id} href={safeProductHref(p)} className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-lg transition">
                   <div className="aspect-square bg-slate-50 mb-3 overflow-hidden rounded">
                     {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <div className="w-full h-full grid place-items-center text-slate-400">ไม่มีรูป</div>}
                   </div>

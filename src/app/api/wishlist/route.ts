@@ -1,6 +1,5 @@
-import clientPromise from '@/lib/mongodb'
+import prisma from '@/lib/prisma'
 import { NextResponse } from 'next/server'
-import { ObjectId } from 'mongodb'
 
 export async function GET(request: Request) {
   try {
@@ -8,14 +7,13 @@ export async function GET(request: Request) {
     const user = url.searchParams.get('user')
     if (!user) return NextResponse.json({ wishlist: [] })
 
-    const client = (await clientPromise) as any
-    const db = client.db(process.env.DB_NAME || 'signshop')
-    const col = db.collection('wishlists')
-    const doc = await col.findOne({ user })
-    const items = (doc?.items || []).map((i: any) => ({ ...i, id: i.id ?? (i._id ? String(i._id) : undefined) }))
+    const wishlist = await prisma.wishlist.findUnique({
+      where: { user }
+    })
+    
+    const items = wishlist?.items ? (Array.isArray(wishlist.items) ? wishlist.items : []) : []
     return NextResponse.json({ wishlist: items })
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('GET /api/wishlist error', err)
     return NextResponse.json({ wishlist: [] }, { status: 500 })
   }
@@ -30,13 +28,34 @@ export async function POST(request: Request) {
     // Normalize item to include an `id` string for reliable deletion later
     const normalized = { ...item, id: item.id ?? (item._id ? String(item._id) : undefined) }
 
-    const client = (await clientPromise) as any
-    const db = client.db(process.env.DB_NAME || 'signshop')
-    const col = db.collection('wishlists')
-    await (col as any).updateOne({ user }, { $addToSet: { items: normalized } }, { upsert: true })
+    // Find existing wishlist or create new one
+    const existingWishlist = await prisma.wishlist.findUnique({
+      where: { user }
+    })
+
+    if (existingWishlist) {
+      // Update existing wishlist by adding item if not already in the list
+      const items = Array.isArray(existingWishlist.items) ? existingWishlist.items as any[] : []
+      const itemExists = items.some((existingItem: any) => existingItem.id === normalized.id)
+      
+      if (!itemExists) {
+        await prisma.wishlist.update({
+          where: { user },
+          data: { items: [...items, normalized] }
+        })
+      }
+    } else {
+      // Create new wishlist
+      await prisma.wishlist.create({
+        data: {
+          user,
+          items: [normalized]
+        }
+      })
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('POST /api/wishlist error', err)
     return NextResponse.json({ ok: false }, { status: 500 })
   }
@@ -49,34 +68,37 @@ export async function DELETE(request: Request) {
     const id = url.searchParams.get('id')
     if (!user || !id) return NextResponse.json({ ok: false }, { status: 400 })
 
-    const client = (await clientPromise) as any
-    const db = client.db(process.env.DB_NAME || 'signshop')
-    const col = db.collection('wishlists')
+    const existingWishlist = await prisma.wishlist.findUnique({
+      where: { user }
+    })
 
-    // First, try to remove by normalized `id` field (string)
-    const res1 = await (col as any).updateOne({ user }, { $pull: { items: { id } } })
-    if (res1?.modifiedCount) return NextResponse.json({ ok: true })
-
-    // Try removing where id was stored as a number (some items use numeric ids)
-    const maybeNum = Number(id)
-    if (!Number.isNaN(maybeNum)) {
-      const resNum = await (col as any).updateOne({ user }, { $pull: { items: { id: maybeNum } } })
-      if (resNum?.modifiedCount) return NextResponse.json({ ok: true })
+    if (!existingWishlist) {
+      return NextResponse.json({ ok: false }, { status: 404 })
     }
 
-    // If not removed, try matching by _id (string)
-    const res2 = await (col as any).updateOne({ user }, { $pull: { items: { _id: id } } })
-    if (res2?.modifiedCount) return NextResponse.json({ ok: true })
+    const items = Array.isArray(existingWishlist.items) ? existingWishlist.items as any[] : []
+    
+    // Try different ways to match the item to remove
+    const newItems = items.filter((item: any) => {
+      // Try string id match
+      if (item.id === id) return false
+      // Try numeric id match
+      const maybeNum = Number(id)
+      if (!Number.isNaN(maybeNum) && item.id === maybeNum) return false
+      // Try _id match
+      if (item._id === id) return false
+      // Keep the item if no match
+      return true
+    })
 
-    // try ObjectId form if id looks like one
-    if (ObjectId.isValid(id)) {
-      const resObj = await (col as any).updateOne({ user }, { $pull: { items: { _id: new ObjectId(id) } } })
-      if (resObj?.modifiedCount) return NextResponse.json({ ok: true })
-    }
+    // Update the wishlist with filtered items
+    await prisma.wishlist.update({
+      where: { user },
+      data: { items: newItems }
+    })
 
-    return NextResponse.json({ ok: false }, { status: 404 })
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('DELETE /api/wishlist error', err)
     return NextResponse.json({ ok: false }, { status: 500 })
   }

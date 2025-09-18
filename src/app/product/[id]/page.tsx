@@ -221,7 +221,7 @@ export default function ProductDetailPage() {
           normalizedOptions.forEach((o) => {
             if (o.values?.length) init[o.name] = o.values[0].value
           })
-          setSelectedOptions(init)
+          setSelectedOptions((prev) => ({ ...init, ...prev }))
         } else {
           setSelectedOptions({})
         }
@@ -280,7 +280,8 @@ export default function ProductDetailPage() {
     
     if (product.options && product.options.length > 0) {
       product.options.forEach((option) => {
-        const selectedValue = selectedOptions[option.name]
+        // Use explicit selected option or fallback to the first value
+        const selectedValue = selectedOptions[option.name] ?? option.values?.[0]?.value
         if (selectedValue) {
           const selectedOptionValue = option.values.find(v => v.value === selectedValue)
           if (selectedOptionValue) {
@@ -308,7 +309,11 @@ export default function ProductDetailPage() {
   const requiresOptions = (product?.options?.length ?? 0) > 0
   const selectedComplete = !requiresOptions
     ? true
-    : product!.options!.every((opt) => !!selectedOptions[opt.name])
+    : product!.options!.every((opt) => {
+      // consider default-first-value as selected when user hasn't interacted
+      const val = selectedOptions[opt.name] ?? opt.values?.[0]?.value
+      return !!val
+    })
 
   // Cart state — อ้างอิงตาม selectedOptions เสมอ
   const inCart = CartManager.isInCart(product?._id || '', selectedOptions)

@@ -1,27 +1,18 @@
-import { MongoClient, ObjectId } from 'mongodb'
 import { NextRequest, NextResponse } from 'next/server'
-
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
-const client = new MongoClient(uri)
+import prisma from '../../../lib/prisma'
 
 export async function GET() {
   try {
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
-    
     // Get all active announcements, sorted by creation date (newest first)
-    const announcements = await collection
-      .find({ isActive: true })
-      .sort({ createdAt: -1 })
-      .toArray()
+    const announcements = await prisma.announcement.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' }
+    })
     
     return NextResponse.json(announcements)
   } catch (error) {
     console.error('Error fetching announcements:', error)
     return NextResponse.json({ error: 'Failed to fetch announcements' }, { status: 500 })
-  } finally {
-    await client.close()
   }
 }
 
@@ -34,29 +25,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title and content are required' }, { status: 400 })
     }
     
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
+    const announcement = await prisma.announcement.create({
+      data: {
+        title,
+        content,
+        type,
+        isActive: true,
+        image: image || null,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+      }
+    })
     
-    const announcement = {
-      title,
-      content,
-      type,
-      isActive: true,
-      image: image || null,
-      startDate: startDate || null,
-      endDate: endDate || null,
-      createdAt: new Date().toISOString(),
-    }
-    
-    const result = await collection.insertOne(announcement)
-    
-    return NextResponse.json({ success: true, id: result.insertedId })
+    return NextResponse.json({ success: true, id: announcement.id })
   } catch (error) {
     console.error('Error creating announcement:', error)
     return NextResponse.json({ error: 'Failed to create announcement' }, { status: 500 })
-  } finally {
-    await client.close()
   }
 }
 
@@ -69,21 +53,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Announcement ID is required' }, { status: 400 })
     }
     
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
-    
-    await collection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { isActive: isActive !== undefined ? isActive : false } }
-    )
+    await prisma.announcement.update({
+      where: { id: parseInt(id) },
+      data: { isActive: isActive !== undefined ? isActive : false }
+    })
     
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error updating announcement:', error)
     return NextResponse.json({ error: 'Failed to update announcement' }, { status: 500 })
-  } finally {
-    await client.close()
   }
 }
 
@@ -97,13 +75,11 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Announcement ID is required' }, { status: 400 })
     }
     
-    await client.connect()
-    const db = client.db('signshop')
-    const collection = db.collection('announcements')
+    const result = await prisma.announcement.delete({
+      where: { id: parseInt(id) }
+    })
     
-    const result = await collection.deleteOne({ _id: new ObjectId(id) })
-    
-    if (result.deletedCount === 0) {
+    if (!result) {
       return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
     }
     
@@ -111,7 +87,5 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('Error deleting announcement:', error)
     return NextResponse.json({ error: 'Failed to delete announcement' }, { status: 500 })
-  } finally {
-    await client.close()
   }
 }

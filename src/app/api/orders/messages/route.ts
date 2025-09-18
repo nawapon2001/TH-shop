@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import mongoose from 'mongoose'
-import Order from '@/models/Order'
-import { connectToDatabase } from '@/lib/mongodb'
+import prisma from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,26 +18,32 @@ export async function OPTIONS() {
 // GET /api/orders/messages?orderId=...
 export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase()
     const { searchParams } = new URL(req.url)
     const orderId = searchParams.get('orderId')
 
     if (!orderId) {
       return NextResponse.json({ success: false, message: 'orderId is required' }, { status: 400, headers: corsHeaders })
     }
-    if (!mongoose.isValidObjectId(orderId)) {
+
+    const orderIdNum = parseInt(orderId)
+    if (isNaN(orderIdNum)) {
       return NextResponse.json({ success: false, message: 'invalid orderId' }, { status: 400, headers: corsHeaders })
     }
 
-  const doc = (await Order.findById(orderId, { messages: 1 }).lean()) as any
-    if (!doc) {
+    // Check if order exists
+    const order = await prisma.order.findUnique({
+      where: { id: orderIdNum }
+    })
+
+    if (!order) {
       return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404, headers: corsHeaders })
     }
 
-    // เรียงแชทจากเก่า -> ใหม่
-  const messages = ((doc.messages as any[]) || []).sort(
-      (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
+    // Get messages for this order, sorted by creation time
+    const messages = await prisma.orderMessage.findMany({
+      where: { orderId: orderIdNum },
+      orderBy: { createdAt: 'asc' }
+    })
 
     return NextResponse.json({ success: true, messages }, { headers: corsHeaders })
   } catch (error) {
@@ -51,7 +55,6 @@ export async function GET(req: NextRequest) {
 // POST { orderId, message, role: 'shop' | 'customer' }
 export async function POST(req: NextRequest) {
   try {
-    await connectToDatabase()
     const body = await req.json().catch(() => ({}))
     const orderId = body?.orderId as string
     const message = (body?.message as string)?.trim()
@@ -60,19 +63,29 @@ export async function POST(req: NextRequest) {
     if (!orderId || !message) {
       return NextResponse.json({ success: false, message: 'orderId and message are required' }, { status: 400, headers: corsHeaders })
     }
-    if (!mongoose.isValidObjectId(orderId)) {
+
+    const orderIdNum = parseInt(orderId)
+    if (isNaN(orderIdNum)) {
       return NextResponse.json({ success: false, message: 'invalid orderId' }, { status: 400, headers: corsHeaders })
     }
 
-    const updated = await Order.findByIdAndUpdate(
-      orderId,
-      { $push: { messages: { role, text: message, createdAt: new Date() } } },
-      { new: true, runValidators: true }
-    )
+    // Check if order exists
+    const order = await prisma.order.findUnique({
+      where: { id: orderIdNum }
+    })
 
-    if (!updated) {
+    if (!order) {
       return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404, headers: corsHeaders })
     }
+
+    // Create new message
+    await prisma.orderMessage.create({
+      data: {
+        orderId: orderIdNum,
+        sender: role,
+        message: message,
+      }
+    })
 
     return NextResponse.json({ success: true }, { headers: corsHeaders })
   } catch (error) {

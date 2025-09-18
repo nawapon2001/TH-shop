@@ -43,15 +43,34 @@ export default function AdminsPage() {
   }, [])
 
   useEffect(() => {
-    const list = loadAdmins()
-    if (list.length === 0) {
-      // seed a safe default if none (optional)
-      const seed = [{ username: 'admin', password: 'admin123' }]
-      saveAdmins(seed)
-      setAdmins(seed)
-    } else {
-      setAdmins(list)
+    // Try to fetch admins from server API; fallback to localStorage
+    let mounted = true
+    const fetchAdmins = async () => {
+      try {
+        const res = await fetch('/api/admin-users')
+        if (!res.ok) throw new Error('api error')
+        const data = await res.json()
+        // transform to local AdminCred shape if possible
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = data.map((u: any) => ({ username: String(u.username), password: '' }))
+          if (mounted) { setAdmins(mapped); saveAdmins(mapped) }
+          return
+        }
+      } catch {
+        // ignore and fallback to localStorage
+      }
+
+      const list = loadAdmins()
+      if (list.length === 0) {
+        const seed = [{ username: 'admin', password: 'admin123' }]
+        saveAdmins(seed)
+        if (mounted) setAdmins(seed)
+      } else {
+        if (mounted) setAdmins(list)
+      }
     }
+    fetchAdmins()
+    return () => { mounted = false }
   }, [])
 
   const addAdmin = (e?: React.FormEvent) => {
@@ -61,9 +80,25 @@ export default function AdminsPage() {
     if (!u || !p) { setError('กรุณากรอกชื่อและรหัสผ่าน'); return }
     if (u.length < 4 || p.length < 4) { setError('ความยาวอย่างน้อย 4 ตัวอักษร'); return }
     if (admins.some(a => a.username.toLowerCase() === u.toLowerCase())) { setError('ชื่อผู้ใช้ซ้ำ'); return }
-    const next = [...admins, { username: u, password: p }]
-    saveAdmins(next); setAdmins(next); setUsername(''); setPassword('')
-    Swal.fire({ icon: 'success', title: 'เพิ่มผู้ดูแลแล้ว', timer: 1000, showConfirmButton: false })
+    // Try to persist via API; fallback to localStorage
+    (async () => {
+      try {
+        const res = await fetch('/api/admin-users', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ username: u, password: p }) })
+        if (res.ok) {
+          // server created -> reload from server (or optimistic add)
+          const next = [...admins, { username: u, password: '' }]
+          saveAdmins(next); setAdmins(next)
+          setUsername(''); setPassword('')
+          return Swal.fire({ icon: 'success', title: 'เพิ่มผู้ดูแลแล้ว', timer: 1000, showConfirmButton: false })
+        }
+        // otherwise fallback to local persistence
+      } catch {
+        // fallback
+      }
+      const next = [...admins, { username: u, password: p }]
+      saveAdmins(next); setAdmins(next); setUsername(''); setPassword('')
+      Swal.fire({ icon: 'success', title: 'เพิ่มผู้ดูแลแล้ว (local)', timer: 1000, showConfirmButton: false })
+    })()
   }
 
   const removeAdmin = async (u: string) => {
@@ -72,9 +107,19 @@ export default function AdminsPage() {
     }
     const ok = await Swal.fire({ icon: 'warning', title: `ลบผู้ดูแล "${u}" ?`, showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' })
     if (!ok.isConfirmed) return
+    // Try API delete by username, fallback to local
+    try {
+      const res = await fetch(`/api/admin-users?username=${encodeURIComponent(u)}`, { method: 'DELETE' })
+      if (res.ok) {
+        const next = admins.filter(a => a.username !== u)
+        saveAdmins(next); setAdmins(next)
+        return Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 800, showConfirmButton: false })
+      }
+  } catch {}
+
     const next = admins.filter(a => a.username !== u)
     saveAdmins(next); setAdmins(next)
-    Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 800, showConfirmButton: false })
+    Swal.fire({ icon: 'success', title: 'ลบแล้ว (local)', timer: 800, showConfirmButton: false })
   }
 
   return (

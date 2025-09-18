@@ -264,7 +264,7 @@ const DashboardSection = ({ products, orders, users, sellersList, loading }: Das
                 const percentage = totalProducts > 0 ? (count / totalProducts) * 100 : 0
                 const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500']
                 return (
-                  <div key={category} className="flex items-center justify-between">
+                  <div key={`${category}-${index}`} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={`w-3 h-3 rounded-full ${colors[index % colors.length]}`}></div>
                       <span className="text-sm font-medium text-slate-700 truncate max-w-32">{category}</span>
@@ -301,8 +301,8 @@ const DashboardSection = ({ products, orders, users, sellersList, loading }: Das
               </div>
             ) : (
               <>
-                {recentOrders.map(order => (
-                  <div key={order._id} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-b-0">
+                {recentOrders.map((order, index) => (
+                  <div key={order._id || `recent-order-${index}`} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-b-0">
                     <div>
                       <div className="font-medium text-slate-800">{order.name}</div>
                       <div className="text-sm text-slate-500">
@@ -580,7 +580,13 @@ export default function AdminPage() {
       const d1 = await r1.json().catch(()=>[])
       const d2 = await r2.json().catch(()=>[])
 
-      const central = Array.isArray(d1) ? d1.map((p: any) => ({ ...p, seller: false })) : []
+      const central = Array.isArray(d1) ? d1.map((p: any) => ({
+        ...p,
+        _id: p.id != null ? String(p.id) : (p._id || ''),
+        images: Array.isArray(p.images) ? p.images : (p.images ? [p.images] : (p.image ? [p.image] : [])),
+        image: p.image || (Array.isArray(p.images) && p.images[0]) || '',
+        seller: false
+      })) : []
       const sellers = Array.isArray(d2) ? d2.map((s: any) => ({
         _id: s._id || s.id || '',
         name: s.name || s.shopName || s.desc || 'สินค้าจากร้านค้า',
@@ -610,7 +616,7 @@ export default function AdminPage() {
   useEffect(()=>{ refreshAll() }, [])
 
   // fetch users and sellers for accounts tab
-  const fetchUsers = async () => { try { const r = await fetch('/api/admin-users'); const d = await r.json(); setUsers(Array.isArray(d)?d:[]) } catch { setUsers([]) } }
+  const fetchUsers = async () => { try { const r = await fetch('/api/users'); const d = await r.json(); setUsers(Array.isArray(d)?d:[]) } catch { setUsers([]) } }
   const fetchSellersList = async () => { try { const r = await fetch('/api/sellers'); const d = await r.json(); setSellersList(Array.isArray(d)?d:[]) } catch { setSellersList([]) } }
 
   // fetch announcements
@@ -817,8 +823,14 @@ export default function AdminPage() {
       const uploadFd = new FormData()
       productFiles.forEach(f => uploadFd.append('files', f))
       const upRes = await fetch('/api/upload', { method: 'POST', body: uploadFd })
-      if (!upRes.ok) throw new Error('upload failed')
-      const upJson = await upRes.json().catch(()=>({}))
+      // Read text first so we can log either JSON or plain text bodies for debugging
+      const upText = await upRes.text().catch(() => '')
+      if (!upRes.ok) {
+        console.error('Upload failed', { status: upRes.status, statusText: upRes.statusText, body: upText })
+        throw new Error(`upload failed: ${upRes.status} ${upRes.statusText} ${upText}`)
+      }
+      let upJson: any = {}
+  try { upJson = upText ? JSON.parse(upText) : {} } catch { upJson = {} }
       const imageUrls: string[] = Array.isArray(upJson?.urls) ? upJson.urls : []
 
       // 2) send product payload with image URLs
@@ -837,10 +849,13 @@ export default function AdminPage() {
       console.log('Full payload:', JSON.stringify(payload, null, 2))
       
       const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      const resText = await res.text().catch(() => '')
       if (!res.ok) {
-        const err = await res.json().catch(()=>({}))
-        console.error('API Error:', err)
-        throw new Error(err?.message || 'create product failed')
+        let errObj: any = {}
+  try { errObj = resText ? JSON.parse(resText) : {} } catch { errObj = {} }
+        console.error('API Error:', { status: res.status, statusText: res.statusText, body: resText, json: errObj })
+        const message = errObj?.message || res.statusText || `status ${res.status}`
+        throw new Error(`create product failed: ${message}`)
       }
       // success
       setName(''); setPrice(''); setSelectedCategory(''); setDescription(''); setProductFiles([]); setOptions([])
@@ -1079,7 +1094,7 @@ export default function AdminPage() {
                    <div className="relative">
                      <input 
                        placeholder="ค้นหา (สินค้า/ออเดอร์)..." 
-                       className="h-12 w-64 rounded-2xl border border-orange-200/50 bg-white/70 backdrop-blur-sm px-4 pr-12 text-sm outline-none focus:ring-4 focus:ring-orange-100 focus:border-orange-400 transition-all duration-300 placeholder:text-slate-400" 
+                       className="h-12 w-64 rounded-2xl border border-orange-200/50 bg-white/70 backdrop-blur-sm px-4 pr-12 text-sm outline-none focus:ring-4 focus:ring-orange-300 focus:border-orange-400 transition-all duration-300 placeholder:text-slate-400" 
                      />
                      <Search className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
                    </div>
@@ -1241,11 +1256,11 @@ export default function AdminPage() {
                {categoryError && <div className="text-red-600 mt-2">{categoryError}</div>}
                <div className="mt-5 flex flex-wrap gap-3">
                  {categories.length ? categories.map((cat, idx) => (
-                   <span key={cat.name || String(idx)} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200 shadow-sm">
+                   <span key={cat.name || `category-${idx}`} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200 shadow-sm">
                      {cat.icon && <img src={cat.icon} alt={cat.name || 'icon'} className="w-6 h-6 rounded-full object-cover border" />}
                      {cat.name || <em className="text-slate-400">ไม่มีชื่อ</em>}
                      <button type="button" className="ml-1 text-xs text-red-600 hover:underline" onClick={async ()=>{
-                       if (cat.name && confirm(`ต้องการลบหมวดหมู่ "${cat.name}" หรือไม่?`)) {
+                       if (cat.name && confirm(`ต้องการลบหมวดหมู่ \"${cat.name}\" หรือไม่?`)) {
                          await fetch(`/api/categories?name=${encodeURIComponent(cat.name)}`, { method:'DELETE' })
                          await fetchCategories()
                        }
@@ -1284,7 +1299,7 @@ export default function AdminPage() {
                          </label>
                          <div className="flex gap-2 flex-wrap">
                            {productFiles.map((file, idx)=>(
-                             <div key={idx} className="relative w-20 h-20 rounded-md overflow-hidden border bg-white">
+                             <div key={`product-file-${idx}`} className="relative w-20 h-20 rounded-md overflow-hidden border bg-white">
                               <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
                                <button type="button" aria-label="ลบรูป" onClick={()=>setProductFiles(arr=>arr.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 grid place-items-center text-xs">×</button>
                              </div>
@@ -1339,7 +1354,7 @@ export default function AdminPage() {
                            <div className="text-sm font-semibold text-slate-700 mb-2">ตัวเลือก</div>
                            <div className="flex flex-wrap gap-2">
                              {options.map((o,i)=>(
-                               <div key={i} className="p-2 rounded-md bg-orange-50 border border-orange-100 text-sm">
+                               <div key={`product-option-${i}`} className="p-2 rounded-md bg-orange-50 border border-orange-100 text-sm">
                                  <div className="font-semibold text-orange-700">{o.name}</div>
                                  <div className="text-xs text-slate-600">
                                    {o.values.map(v => {
@@ -1386,7 +1401,7 @@ export default function AdminPage() {
                   <div className="text-sm text-slate-600 mb-2">ผู้ดูแลทั้งหมด {adminUsers.length} คน</div>
                   <div className="flex flex-col gap-2">
                     {adminUsers.map((u, i) => (
-                      <div key={u.username || i} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-orange-100 bg-white">
+                      <div key={u.username || `admin-user-${i}`} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-orange-100 bg-white">
                         <div>
                           <div className="font-semibold text-orange-700">{u.username}</div>
                           <div className="text-xs text-slate-500">รหัสผ่าน: {u.password ? '••••••' : '-'}</div>
@@ -1412,23 +1427,24 @@ export default function AdminPage() {
                   </div>
                   <div className="grid gap-2">
                     {users.map(u => (
-                      <div key={u.email || u._id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
+                      <div key={u.email || u.id} className="p-3 rounded-xl border bg-white flex items-center gap-3">
                         <div className="flex-1">
-                          <div className="font-semibold">{u.fullName || u.email}</div>
+                          <div className="font-semibold">{u.name || u.email}</div>
                           <div className="text-xs text-slate-500">{u.email}</div>
+                          {u.phone && <div className="text-xs text-slate-400">โทร: {u.phone}</div>}
                         </div>
                         <div className="flex items-center gap-2">
                           <button className="px-3 py-1 rounded-full bg-yellow-500 text-white text-sm" onClick={async ()=>{
                             const { value: newPass } = await Swal.fire({ title: 'ตั้งรหัสผ่านใหม่', input: 'password', inputLabel: `ตั้งรหัสผ่านใหม่ให้ ${u.email}`, showCancelButton: true })
                             if (!newPass) return
-                            const res = await fetch('/api/admin-users', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ email: u.email, password: newPass }) })
+                            const res = await fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ email: u.email, password: newPass }) })
                             if (!res.ok) return Swal.fire({ icon: 'error', title: 'ไม่สามารถเปลี่ยนรหัสผ่านได้' })
                             Swal.fire({ icon: 'success', title: 'เปลี่ยนรหัสผ่านสำเร็จ', timer: 1200, showConfirmButton: false })
                           }}>เปลี่ยนรหัสผ่าน</button>
                           <button className="px-3 py-1 rounded-full bg-red-600 text-white text-sm" onClick={async ()=>{
                             const ok = await Swal.fire({ title: `ลบผู้ใช้ ${u.email}?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบ' })
                             if (!ok.isConfirmed) return
-                            await fetch(`/api/admin-users?email=${encodeURIComponent(u.email)}`, { method: 'DELETE' })
+                            await fetch(`/api/users?email=${encodeURIComponent(u.email)}`, { method: 'DELETE' })
                             await fetchUsers()
                             Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 1000, showConfirmButton: false })
                           }}>ลบ</button>
@@ -1948,15 +1964,15 @@ function OrdersSection({
        </div>
 
        {loading ? (
-         <div className="grid gap-4 mt-4">{Array.from({ length: 4 }).map((_,i)=>(<div key={i} className="h-36 rounded-2xl border border-orange-200 bg-orange-50/50 animate-pulse" />))}</div>
+         <div className="grid gap-4 mt-4">{Array.from({ length: 4 }).map((_,i)=>(<div key={`loading-skeleton-${i}`} className="h-36 rounded-2xl border border-orange-200 bg-orange-50/50 animate-pulse" />))}</div>
        ) : filtered.length === 0 ? (
          <div className="rounded-2xl border border-orange-200 bg-white p-10 text-center text-slate-500 mt-4">ไม่พบคำสั่งซื้อที่ตรงกับเงื่อนไข</div>
        ) : (
          <div className="space-y-6 mt-4">
-           {filtered.map(o=>{
+           {filtered.map((o, index)=>{
              const created = o.createdAt ? new Date(o.createdAt) : null
              return (
-               <div key={o._id} onClick={()=>onSelect(o._id)} className={`rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer ${selectedId===o._id ? 'border-orange-400 ring-2 ring-orange-100' : 'border-orange-200'}`}>
+               <div key={o._id || o.id || `filtered-order-${index}`} onClick={()=>onSelect(o._id)} className={`rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer ${selectedId===o._id ? 'border-orange-400 ring-2 ring-orange-100' : 'border-orange-200'}`}>
                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                    <div className="flex flex-wrap items-center gap-2">
                      <span className="rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-700 border border-orange-200">#{o._id.slice(-6)}</span>
@@ -1984,7 +2000,7 @@ function OrdersSection({
                    <div className="rounded-xl border border-orange-100 bg-orange-50/30 p-3">
                      <div className="mb-1 flex items-center gap-2 font-semibold text-orange-700"><Package className="h-4 w-4" /> รายการสินค้า</div>
                      <ul className="divide-y text-sm">
-                       {o.items.map((it,i)=>(<li key={i} className="flex items-center justify-between py-1.5"><span className="truncate">{it.name}</span><span className="font-semibold text-slate-800">{it.price?.toLocaleString()} บาท</span></li>))}
+                       {o.items.map((it,i)=>(<li key={`order-item-${o._id || o.id}-${i}`} className="flex items-center justify-between py-1.5"><span className="truncate">{it.name}</span><span className="font-semibold text-slate-800">{it.price?.toLocaleString()} บาท</span></li>))}
                      </ul>
                    </div>
 
@@ -2040,7 +2056,7 @@ function OrdersSection({
      case 'paid': return <span className={`${base} border-amber-200 bg-amber-50 text-amber-800`}><BadgeCheck className="h-3.5 w-3.5" /> {STATUS_LABEL.paid}</span>
      case 'shipped': return <span className={`${base} border-blue-200 bg-blue-50 text-blue-800`}><Truck className="h-3.5 w-3.5" /> {STATUS_LABEL.shipped}</span>
      case 'completed': return <span className={`${base} border-emerald-200 bg-emerald-50 text-emerald-800`}><CheckCircle2 className="h-3.5 w-3.5" /> {STATUS_LABEL.completed}</span>
-     case 'cancelled': default: return <span className={`${base} border-red-200 bg-red-50 text-red-800`}><XCircle className="h-3.5 w-3.5" /> {STATUS_LABEL.cancelled}</span>
+     case 'cancelled': return <span className={`${base} border-red-200 bg-red-50 text-red-800`}><XCircle className="h-3.5 w-3.5" /> {STATUS_LABEL.cancelled}</span>
    }
  }
 
@@ -2070,8 +2086,8 @@ const ProductsList = ({ products, onRefresh, onDelete }: ProductsListProps) => {
     <SectionCard title="รายการสินค้า" subtitle={`ทั้งหมด ${total} รายการ`}>
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paged.map(p => (
-            <div key={p._id} className="bg-white rounded-xl border p-4 flex gap-3 items-center">
+          {paged.map((p, index) => (
+            <div key={p._id || p.id || `product-${index}`} className="bg-white rounded-xl border p-4 flex gap-3 items-center">
               <div className="w-20 h-20 bg-slate-50 flex items-center justify-center overflow-hidden rounded">
                 {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <div className="text-slate-300">ไม่มีรูป</div>}
               </div>
@@ -2082,7 +2098,7 @@ const ProductsList = ({ products, onRefresh, onDelete }: ProductsListProps) => {
                 {p.seller && <div className="text-xs text-amber-700 mt-1">จากร้าน: {p.username || 'ไม่ระบุ'}</div>}
               </div>
               <div className="flex flex-col gap-2">
-                <a href={`/product/${p._id}`} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-full bg-slate-100 text-slate-700 text-sm">ดู</a>
+                <a href={p._id ? `/product/${encodeURIComponent(String(p._id))}` : '#'} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-full bg-slate-100 text-slate-700 text-sm">ดู</a>
                 <button onClick={()=>handleDelete(p._id)} className="px-3 py-2 rounded-full bg-red-600 text-white text-sm">ลบ</button>
               </div>
             </div>
